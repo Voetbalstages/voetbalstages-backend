@@ -1,0 +1,58 @@
+# Staging stack for Coolify (Docker Compose application): MongoDB + seed + API, all persistent.
+# Same shape as docker-compose.yml, but: prebuilt image from GHCR, authenticated Mongo that is not
+# published on the host, restart policies, and the dev seed refreshes itself when it goes stale.
+# Set the domain on the `api` service (port 3000) in Coolify, and see README "Staging" for variables.
+name: voetbalstages-staging
+
+x-api: &api
+  image: ${API_IMAGE:-ghcr.io/voetbalstages/voetbalstages-backend:staging}
+  pull_policy: ${API_PULL_POLICY:-always}
+  environment:
+    APP_ENV: staging
+    DEV_TOOLS: "true" # fake Mollie checkout + login links in the logs; refused when APP_ENV=production
+    MONGO_URI: mongodb://${SERVICE_USER_MONGO}:${SERVICE_PASSWORD_MONGO}@mongo:27017/administration?authSource=admin
+    API_URL: ${API_URL:?set API_URL to the public URL of the api service}
+    SHOP_URL: ${SHOP_URL:?set SHOP_URL to the staging shop origin}
+    CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS to the staging shop origin}
+    TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-1}
+    MAIL_DISABLED: "true"
+    MOLLIE_TESTMODE: "true"
+    SEED_REFRESH_STALE: "true"
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+  depends_on:
+    mongo:
+      condition: service_healthy
+
+services:
+  mongo:
+    image: mongo:${MONGO_VERSION:-8.2}
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${SERVICE_USER_MONGO}
+      MONGO_INITDB_ROOT_PASSWORD: ${SERVICE_PASSWORD_MONGO}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  seed:
+    <<: *api
+    command: ["bun", "scripts/seed.ts"]
+    restart: "no"
+
+  api:
+    <<: *api
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+volumes:
+  mongo-data:

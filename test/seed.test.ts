@@ -80,6 +80,19 @@ describe('dev seed', () => {
   })
 })
 
+describe('dev seed on a persistent database', () => {
+  it('refreshStale re-seeds only after every camp is in the past', async () => {
+    expect(await seed()).toBe(true)
+    expect(await seed({ refreshStale: true })).toBe(false)
+
+    await Users.collection.insertOne({ email: 'tester@example.test' })
+    await Camps.collection.updateMany({}, { $set: { from: new Date(Date.now() - 86_400_000) } })
+    expect(await seed({ refreshStale: true })).toBe(true)
+    expect(await Users.countDocuments({ email: 'tester@example.test' })).toBe(0)
+    expect(await Camps.countDocuments({ from: { $gt: new Date() } })).toBeGreaterThan(5)
+  })
+})
+
 describe('fake Mollie gateway (DEV_TOOLS)', () => {
   it('creates a payment with a local checkout URL and reflects status changes', async () => {
     const created = await fakeGateway.createPayment({

@@ -2,7 +2,7 @@ name: Build and deploy
 
 on:
   push:
-    branches: [master]
+    branches: [master, staging]
   pull_request:
   workflow_dispatch:
 
@@ -35,20 +35,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        run: echo "image=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+        run: |
+          image="$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')"
+          if [ "$GITHUB_REF_NAME" = staging ]; then
+            tags="$image:staging,$image:staging-$GITHUB_SHA"
+          else
+            tags="$image:latest,$image:$GITHUB_SHA"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: |
-            ${{ steps.meta.outputs.image }}:latest
-            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
     needs: image
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref_name != 'staging'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Coolify deployment
@@ -58,6 +63,23 @@ jobs:
         run: |
           if [ -z "$COOLIFY_WEBHOOK_URL" ]; then
             echo "COOLIFY_WEBHOOK_URL not set, skipping deploy"
+            exit 0
+          fi
+          curl --fail --silent --show-error -X GET "$COOLIFY_WEBHOOK_URL" \
+            -H "Authorization: Bearer $COOLIFY_TOKEN"
+
+  deploy-staging:
+    needs: image
+    if: github.event_name != 'pull_request' && github.ref_name == 'staging'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify staging deployment
+        env:
+          COOLIFY_WEBHOOK_URL: ${{ secrets.COOLIFY_STAGING_WEBHOOK_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          if [ -z "$COOLIFY_WEBHOOK_URL" ]; then
+            echo "COOLIFY_STAGING_WEBHOOK_URL not set, skipping deploy"
             exit 0
           fi
           curl --fail --silent --show-error -X GET "$COOLIFY_WEBHOOK_URL" \

@@ -73,6 +73,52 @@ The old backend and admin read and write the same collections. Until step 3 of t
   Keep it that way. `test/orders.test.ts`, `payments.test.ts` and `cancel.test.ts` cover it.
 - No cron jobs here; the old backend runs the nightly payment check.
 
+## Environments
+
+| | local | staging | production |
+|---|---|---|---|
+| Compose file | `docker-compose.yml` | `docker-compose.staging.yml` | none (Coolify *Docker Image* app) |
+| `APP_ENV` | `local` | `staging` | `production` (default) |
+| MongoDB | container, port published | container, authenticated, internal only, persistent volume | the existing database |
+| Seed data | on first start | on first start, refreshed once all camps are past | never |
+| `DEV_TOOLS` (fake Mollie, login links in logs) | on | on | refused at startup |
+| Image | built locally | `ghcr.io/…:staging` (branch `staging`) | `ghcr.io/…:latest` (branch `master`) |
+
+`APP_ENV` defaults to `production`, and the API refuses to start with `DEV_TOOLS=true` in that case,
+so a forgotten variable can never turn on fake payments in production.
+
+### Staging (Coolify)
+
+Same stack as local (MongoDB + seed + API) as one Docker Compose application, deployed from the
+`staging` branch. The seed only fills an empty database, so staging keeps its data (and any accounts
+testers create) across deploys. Because seeded dates are relative to the seed time, the seed wipes and
+re-seeds on a deploy once no camp starts in the future any more (`SEED_REFRESH_STALE`). Force it any
+time with `docker compose exec api bun scripts/seed.ts --reset` (or the Coolify terminal).
+
+One-time setup:
+
+1. **GitHub:** create the `staging` branch and push it once, so the `:staging` image exists in GHCR.
+   Add repo secret `COOLIFY_STAGING_WEBHOOK_URL` (`COOLIFY_TOKEN` is shared with production).
+   Pushing to `staging` then runs the tests, publishes the image and calls the webhook.
+2. **Coolify:** new resource, *Docker Compose* (empty/raw or from this repo), compose file
+   `docker-compose.staging.yml`. Give the `api` service a domain on port `3000`, e.g.
+   `https://api-staging.voetbalstages.be:3000`. If the GHCR package is private, the server needs the
+   same registry login as production. Copy the deploy webhook URL from the resource into the secret above.
+3. **Environment variables** (Coolify generates `SERVICE_USER_MONGO` / `SERVICE_PASSWORD_MONGO` itself):
+
+| Variable | Value |
+|---|---|
+| `API_URL` | the public URL of the `api` domain (Mollie redirects and fake checkout links use it) |
+| `SHOP_URL` | staging shop origin (magic links, order redirects) |
+| `CORS_ORIGINS` | the same staging shop origin |
+| `TRUSTED_PROXY_COUNT` | optional, default `1` (Traefik); `2` with Cloudflare in front |
+| `API_IMAGE`, `MONGO_VERSION`, `LOG_LEVEL` | optional overrides |
+
+Use it like local: request a magic link, read the URL from the `api` logs in Coolify, and pay through
+the fake checkout at `$API_URL/api/v1/dev/checkout/<id>`. Mail is not sent in staging. The mock logins
+are listed in the local section above. Staging login links sit in the logs, so only give Coolify
+access to people who may use staging.
+
 ## Deploy (Coolify)
 
 On every push to `master`, GitHub Actions runs typecheck + tests, then builds and pushes

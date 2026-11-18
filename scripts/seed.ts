@@ -35,10 +35,18 @@ const wipe = () =>
     )
   )
 
-/** Inserts the dev dataset. Returns false (and writes nothing) when data already exists and `reset` is off. */
-export const seed = async ({ reset = false } = {}) => {
+/**
+ * Inserts the dev dataset. Returns false (and writes nothing) when data already exists and `reset`
+ * is off. With `refreshStale`, existing data is wiped and re-seeded once no camp starts in the
+ * future any more (seeded dates are relative to the seed time, so a persistent database rots).
+ */
+export const seed = async ({ reset = false, refreshStale = false } = {}) => {
   if (reset) await wipe()
-  else if ((await SettingsModel.countDocuments()) > 0) return false
+  else if ((await SettingsModel.countDocuments()) > 0) {
+    const stale = refreshStale && (await Camps.countDocuments({ from: { $gt: new Date() } })) === 0
+    if (!stale) return false
+    await wipe()
+  }
 
   await SettingsModel.collection.insertOne({
     earlyBirdDiscount: 15,
@@ -237,7 +245,8 @@ if (import.meta.main) {
 
   await connectDb(env.MONGO_URI)
   const reset = process.argv.includes('--reset')
-  const done = await seed({ reset })
+  const refreshStale = process.env.SEED_REFRESH_STALE === 'true'
+  const done = await seed({ reset, refreshStale })
   await disconnectDb()
 
   if (!done) {

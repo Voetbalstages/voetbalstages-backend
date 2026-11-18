@@ -15,6 +15,7 @@ x-api: &api
     TRUSTED_PROXY_COUNT: "0"
     MAIL_DISABLED: "true"
     MOLLIE_TESTMODE: "true"
+    APP_ENV: local
     DEV_TOOLS: "true"
   depends_on:
     mongo:

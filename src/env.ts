@@ -13,8 +13,11 @@ const csv = z
       .filter(Boolean)
   )
 
-const schema = z.object({
+const schema = z
+  .object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // Which deployment this is. Defaults to production so a forgotten variable can never enable dev tooling.
+  APP_ENV: z.enum(['local', 'staging', 'production']).default('production'),
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.string().default('info'),
 
@@ -42,7 +45,11 @@ const schema = z.object({
 
   N8N_WEBHOOK_URL: z.string().optional(),
   BUGSNAG_API_KEY: z.string().optional()
-})
+  })
+  .refine(e => !(e.DEV_TOOLS && e.APP_ENV === 'production'), {
+    path: ['DEV_TOOLS'],
+    message: 'DEV_TOOLS (fake payments, logged login links) must not be enabled when APP_ENV=production'
+  })
 
 export type Env = z.infer<typeof schema>
 
