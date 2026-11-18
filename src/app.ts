@@ -19,6 +19,7 @@ import registrationRoutes from './routes/registrations.js'
 import organizationRoutes from './routes/organizations.js'
 import publicRoutes from './routes/public.js'
 import paymentRoutes from './routes/payments.js'
+import devRoutes from './dev/routes.js'
 
 const BASE = '/api/v1'
 
@@ -64,6 +65,7 @@ export const createApp = () => {
 
   // Mollie webhook: before CORS/guard/session, it is server-to-server.
   app.route(`${BASE}/payments`, paymentRoutes)
+  if (env.DEV_TOOLS) app.route(`${BASE}/dev`, devRoutes)
 
   app.use(
     `${BASE}/*`,

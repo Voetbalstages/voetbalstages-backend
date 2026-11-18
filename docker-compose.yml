@@ -1,0 +1,54 @@
+# Local development stack: MongoDB + one-shot seed + the API image.
+#   docker compose up --build          # API on http://localhost:3000/api/v1/docs
+#   docker compose run --rm seed bun scripts/seed.ts --reset   # wipe and re-seed the dev database
+# DEV_TOOLS=true logs magic-link URLs and replaces Mollie with a fake checkout page.
+name: voetbalstages
+
+x-api: &api
+  build: .
+  image: voetbalstages-api:dev
+  environment:
+    MONGO_URI: mongodb://mongo:27017/administration
+    API_URL: http://localhost:3000
+    SHOP_URL: http://localhost:5173
+    CORS_ORIGINS: http://localhost:5173
+    TRUSTED_PROXY_COUNT: "0"
+    MAIL_DISABLED: "true"
+    MOLLIE_TESTMODE: "true"
+    DEV_TOOLS: "true"
+  depends_on:
+    mongo:
+      condition: service_healthy
+
+services:
+  mongo:
+    # mongo:8.0 refuses to start on Docker VMs with Linux kernel 6.19 to 7.0.13 (SERVER-121912);
+    # set MONGO_IMAGE=mongo:8.0 once your Docker Desktop kernel is outside that range.
+    image: ${MONGO_IMAGE:-mongo:8.2}
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  seed:
+    <<: *api
+    command: ["bun", "scripts/seed.ts"]
+    restart: "no"
+
+  api:
+    <<: *api
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+volumes:
+  mongo-data:

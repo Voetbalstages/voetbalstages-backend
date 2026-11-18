@@ -14,12 +14,51 @@ cp .env.example .env          # defaults point at a local Mongo, mails are logge
 docker run -d -p 27017:27017 --name vs-mongo mongo:8.0.17   # or use the old repo's compose Mongo
 bun install
 bun run dev                   # http://localhost:3000/api/v1/docs
-bun run test                #  in-memory Mongo, no network needed after first run
+bun run test                  # spawns a throwaway mongod, no network needed after first run
 bun run typecheck
 ```
 
 The session cookie is `__Host-` prefixed (Secure), so use `http://localhost` (browsers treat it
 as secure) or HTTPS.
+
+### Local stack with Docker (MongoDB + seed data + API)
+
+```sh
+docker compose up --build     # API on http://localhost:3000/api/v1/docs, MongoDB on :27017
+```
+
+A one-shot `seed` service fills an empty database with mock data (skipped if data exists):
+2 organizations, 6 locations (visible, auto, hidden), 13 camps (open, early bird, force-pay window,
+past, hidden, canceled, every option type), 5 users and registrations in every status.
+
+| Login (magic link)              | What it is                                                 |
+|---------------------------------|------------------------------------------------------------|
+| `ouder@voetbalstages.test`      | Parent with 3 students, 9 registrations, EUR 25 credit      |
+| `ouder2@voetbalstages.test`     | Second parent (ownership checks), 2 registrations           |
+| `nieuw@voetbalstages.test`      | Fresh account: no students, no orders                       |
+| `manager@…` / `admin@…`         | MANAGER / ADMIN roles                                       |
+
+Any other email also works and creates a new account (terms must be accepted).
+
+`DEV_TOOLS=true` (set in the compose file, never set it in production) makes two things work
+without outside services:
+
+- **Login links:** mail is not sent; request a link, then read the URL from `docker compose logs api`
+  (`docker compose logs api | grep token=`). Send the token to `POST /auth/magic-link/verify`.
+- **Payments:** Mollie is replaced by a fake checkout page at `/api/v1/dev/checkout/<id>` where you
+  choose paid / pending / failed / canceled / expired; it then runs the real webhook handler and
+  redirects to `SHOP_URL/bestellingen/<orderId>`. Fake payments live in memory (lost on restart).
+
+```sh
+docker compose run --rm seed bun scripts/seed.ts --reset   # wipe the dev database and re-seed
+docker compose down -v                                     # remove everything incl. the data volume
+bun run seed                                               # seed a local mongod without Docker
+```
+
+`seed` refuses to run against a non-local `MONGO_URI` (override with `SEED_FORCE=true`). Seeded dates
+are relative to the seed time, so re-seed when the camps are in the past. If `mongo:8.0` crashes
+with a kernel error (Docker VM kernel 6.19 to 7.0.13), the stack uses `mongo:8.2`; override with
+`MONGO_IMAGE=...`.
 
 ## Rules for working on the shared database
 

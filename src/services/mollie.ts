@@ -1,4 +1,5 @@
 import { env } from '../env.js'
+import { fakeGateway } from '../dev/fakeMollie.js'
 
 export interface MolliePayment {
   id: string
@@ -89,11 +90,12 @@ const httpGateway: MollieGateway = {
   }
 }
 
-let gateway: MollieGateway = httpGateway
+const defaultGateway: MollieGateway = env.DEV_TOOLS ? fakeGateway : httpGateway
+let gateway: MollieGateway = defaultGateway
 
 export const mollie = (): MollieGateway => gateway
 
 /** Test hook. */
 export const setMollieGateway = (g: MollieGateway | null) => {
-  gateway = g ?? httpGateway
+  gateway = g ?? defaultGateway
 }

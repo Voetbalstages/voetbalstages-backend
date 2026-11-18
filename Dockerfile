@@ -12,6 +12,7 @@ WORKDIR /app
 COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
 COPY --chown=bun:bun package.json ./
 COPY --chown=bun:bun src ./src
+COPY --chown=bun:bun scripts ./scripts
 COPY --chown=bun:bun emails ./emails
 USER bun
 EXPOSE 3000

@@ -70,7 +70,10 @@ const fromAddress = async () => {
 export const sendMail = async (to: string, template: Template, data: Record<string, unknown>) => {
   if (env.MAIL_DISABLED) {
     outbox.push({ to, template, data })
-    logger.info({ to, template }, 'mail (disabled, not sent)')
+    logger.info(
+      { to, template, ...(env.DEV_TOOLS && typeof data.url === 'string' && { url: data.url }) },
+      'mail (disabled, not sent)'
+    )
     return
   }
   try {

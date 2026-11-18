@@ -37,6 +37,9 @@ const schema = z.object({
   MOLLIE_TESTMODE: bool.default(true),
   APPLICATION_FEE: z.coerce.number().min(0).default(0),
 
+  // Local development only: logs magic-link URLs and replaces Mollie with a fake checkout page.
+  DEV_TOOLS: bool.default(false),
+
   N8N_WEBHOOK_URL: z.string().optional(),
   BUGSNAG_API_KEY: z.string().optional()
 })
