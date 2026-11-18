@@ -65,6 +65,10 @@ jobs:
             echo "::error::COOLIFY_WEBHOOK_URL secret is not set, cannot deploy"
             exit 1
           fi
+          if [ -z "$COOLIFY_TOKEN" ]; then
+            echo "::error::COOLIFY_TOKEN secret is not set, cannot deploy"
+            exit 1
+          fi
           curl --fail --silent --show-error -X GET "$COOLIFY_WEBHOOK_URL" \
             -H "Authorization: Bearer $COOLIFY_TOKEN"
 
@@ -80,6 +84,10 @@ jobs:
         run: |
           if [ -z "$COOLIFY_WEBHOOK_URL" ]; then
             echo "::error::COOLIFY_STAGING_WEBHOOK_URL secret is not set, cannot deploy"
+            exit 1
+          fi
+          if [ -z "$COOLIFY_TOKEN" ]; then
+            echo "::error::COOLIFY_TOKEN secret is not set, cannot deploy"
             exit 1
           fi
           curl --fail --silent --show-error -X GET "$COOLIFY_WEBHOOK_URL" \
