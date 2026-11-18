@@ -1,5 +1,4 @@
 import type { Context } from 'hono'
-import { getConnInfo } from '@hono/node-server/conninfo'
 
 /**
  * Client IP behind `trustedProxies` reverse proxies. Each proxy appends the address it saw to
@@ -14,9 +13,7 @@ export const clientIp = (c: Context, trustedProxies: number): string => {
   if (trustedProxies > 0 && xff.length >= trustedProxies) {
     return xff[xff.length - trustedProxies]!
   }
-  try {
-    return getConnInfo(c).remote.address ?? 'unknown'
-  } catch {
-    return 'unknown'
-  }
+  // Bun.serve passes the server as the fetch env; absent when called via app.request() in tests.
+  const server = c.env as { requestIP?: (req: Request) => { address: string } | null } | undefined
+  return server?.requestIP?.(c.req.raw)?.address ?? 'unknown'
 }

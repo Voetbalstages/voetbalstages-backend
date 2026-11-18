@@ -1,4 +1,3 @@
-import { serve } from '@hono/node-server'
 import { env } from './env.js'
 import { logger } from './logger.js'
 import { connectDb, disconnectDb } from './db/connection.js'
@@ -7,17 +6,15 @@ import { createApp } from './app.js'
 await connectDb(env.MONGO_URI)
 logger.info('MongoDB connected')
 
-const server = serve({ fetch: createApp().fetch, port: env.PORT, hostname: '0.0.0.0' }, info =>
-  logger.info(`API listening on :${info.port}`)
-)
+const server = Bun.serve({ fetch: createApp().fetch, port: env.PORT, hostname: '0.0.0.0' })
+logger.info(`API listening on :${server.port}`)
 
-const shutdown = (signal: string) => {
+const shutdown = async (signal: string) => {
   logger.info({ signal }, 'shutting down')
-  server.close(async () => {
-    await disconnectDb()
-    process.exit(0)
-  })
   setTimeout(() => process.exit(1), 10_000).unref()
+  await server.stop()
+  await disconnectDb()
+  process.exit(0)
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'))
 process.on('SIGINT', () => shutdown('SIGINT'))
