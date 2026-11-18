@@ -62,8 +62,8 @@ jobs:
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
         run: |
           if [ -z "$COOLIFY_WEBHOOK_URL" ]; then
-            echo "COOLIFY_WEBHOOK_URL not set, skipping deploy"
-            exit 0
+            echo "::error::COOLIFY_WEBHOOK_URL secret is not set, cannot deploy"
+            exit 1
           fi
           curl --fail --silent --show-error -X GET "$COOLIFY_WEBHOOK_URL" \
             -H "Authorization: Bearer $COOLIFY_TOKEN"
@@ -79,8 +79,8 @@ jobs:
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
         run: |
           if [ -z "$COOLIFY_WEBHOOK_URL" ]; then
-            echo "COOLIFY_STAGING_WEBHOOK_URL not set, skipping deploy"
-            exit 0
+            echo "::error::COOLIFY_STAGING_WEBHOOK_URL secret is not set, cannot deploy"
+            exit 1
           fi
           curl --fail --silent --show-error -X GET "$COOLIFY_WEBHOOK_URL" \
             -H "Authorization: Bearer $COOLIFY_TOKEN"

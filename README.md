@@ -127,7 +127,7 @@ On every push to `main`, GitHub Actions runs typecheck + tests, then builds and 
 One-time setup:
 
 1. **GitHub repo secrets:** `COOLIFY_WEBHOOK_URL` (the app's deploy webhook URL from Coolify) and
-   `COOLIFY_TOKEN` (a Coolify API token with deploy permission). Without them the deploy job is skipped.
+   `COOLIFY_TOKEN` (a Coolify API token with deploy permission). Without them the deploy job fails (the image is still published).
 2. **Coolify app:** type *Docker Image*, image `ghcr.io/voetbalstages/voetbalstages-backend:latest`,
    port `3000`, health check path `/health`. If the GHCR package is private, add a registry
    credential (GitHub PAT with `read:packages`) in Coolify.
