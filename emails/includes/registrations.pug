@@ -1,0 +1,14 @@
+table
+  thead
+    tr
+      th Naam kind
+      th Locatie
+      th Data
+      th Status
+  tbody
+    each registration in registrations
+      tr
+        td #{registration.student.name}
+        td #{registration.location.name} #{registration.camp.name || ''}
+        td Van #{formatDate(registration.camp.from)} tot #{formatDate(registration.camp.to)}
+        td #{statusTranslations[registration.status]}

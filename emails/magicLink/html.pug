@@ -1,0 +1,17 @@
+head
+  link(rel="stylesheet", href="/style.css", data-inline)
+
+div.container
+  include ../includes/header.pug
+  div.content
+    if name
+      p Beste #{name},
+    else
+      p Beste,
+    p Klik op de knop hieronder om in te loggen op Voetbalstages.be. De link is #{minutes} minuten geldig en kan maar één keer gebruikt worden.
+    p: a(href=url) Inloggen
+    p Werkt de knop niet? Kopieer dan deze link in je browser:
+    p: a(href=url) #{url}
+    p Heb je niet geprobeerd in te loggen? Dan mag je deze mail negeren.
+    include ../includes/greeting.pug
+  include ../includes/footer.pug

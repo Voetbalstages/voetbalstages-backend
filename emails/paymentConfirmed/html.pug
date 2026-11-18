@@ -1,0 +1,28 @@
+head
+  link(rel="stylesheet", href="/style.css", data-inline)
+  
+div.container
+  include ../includes/header.pug
+  div.content
+    p Beste #{name},
+    p Wij hebben uw betaling van <b>#{amount}</b>* succesvol ontvangen. Wij danken u voor het vertrouwen.
+    p Hieronder vindt u een overzicht van de inschrijvingen met bestelnummer <a href=#{orderLink}>#{orderId}</a>:
+    table
+      thead
+        tr
+          th Naam kind
+          th Locatie
+          th Data
+          th Status
+      tbody
+        each registration in registrations
+          tr
+            td #{registration.student.name}
+            td #{registration.location.name} #{registration.camp.name || ''}
+            td Van #{formatDate(registration.camp.from)} tot #{formatDate(registration.camp.to)}
+            td #{statusTranslations[registration.status]}
+    p Voor de praktische informatie van deze stage verwijs ik u graag door naar onze website: <a href="http://www.voetbalstages.be/inschrijven">http://www.voetbalstages.be/inschrijven</a>
+    p Heeft u nog vragen of opmerkingen kan u steeds terecht op de FAQ-pagina: <a href="http://www.voetbalstages.be/contact">http://www.voetbalstages.be/contact</a>
+    include ../includes/greeting.pug
+    small * Is het bedrag dat we van u ontvingen volgens deze mail € 0,00? Of ligt het lager dan de kost van de inschrijvingen? Dan werd (een deel van) de betaling voldaan d.m.v. het beschikbare saldo in uw account.
+  include ../includes/footer.pug

@@ -1,0 +1,15 @@
+head
+  link(rel="stylesheet" href="/style.css", data-inline)
+
+div.container
+  include ../includes/header.pug
+  div.content
+    p Beste #{name},
+    p Wij danken u voor de inschrijving op een van de voetbalstages. We kijken er enorm naar uit en doen er alles aan om er een topstage van te maken.
+    p De volgende inschrijvingen met bestelnummer <a href=#{orderLink}>#{orderId}</a> zijn bevestigd:
+    include ../includes/registrations.pug
+    p Als de betaling is voltooid krijgt u hiervan een aparte bevestigingsmail.
+    p Voor de praktische informatie van deze stage verwijs ik u graag door naar onze website: <a href="http://www.voetbalstages.be/inschrijven">http://www.voetbalstages.be/inschrijven</a>. Daar kan u doorklikken op het logo van uw locatie.
+    p Heeft u nog vragen of opmerkingen kan u steeds terecht op de FAQ-pagina: <a href="http://www.voetbalstages.be/contact">http://www.voetbalstages.be/contact</a>
+    include ../includes/greeting.pug
+  include ../includes/footer.pug

@@ -5,7 +5,7 @@ Scope: only endpoints reachable from the public booking flow. All admin/manager-
 functionality (camp/location/organization CRUD, user administration, settings mutations,
 CSV exports, admin registration lists, Google Places proxy) is deliberately excluded.
 
-**NOTE: this is a REST API design based on the current implementation, it might change when implemented.**
+**Implemented in this repo (step 1 of [REFACTOR.md](REFACTOR.md)). Live, always-current docs: `GET /api/v1/docs` (Swagger UI) and `GET /api/v1/openapi.json`.**
 
 ---
 
@@ -18,7 +18,8 @@ CSV exports, admin registration lists, Google Places proxy) is deliberately excl
 | IDs | Mongo ObjectId strings, exposed as `id` (never `_id`) |
 | Dates | ISO-8601 UTC strings (`2026-07-06T11:00:00.000Z`). `Student.dob` stays a plain string, as today |
 | Money | Numbers in EUR, 2 decimals |
-| Auth | Session cookie (`express-session` + passport). Send `credentials: 'include'` cross-origin. A token/JWT variant is a drop-in replacement — the endpoint list does not change |
+| Auth | Passwordless magic link → host-only session cookie `__Host-vs_session` (HttpOnly, Secure, SameSite=Lax, 30 days sliding). Send `credentials: 'include'` |
+| CSRF | Every `POST` must send `Content-Type: application/json` (also when bodiless), otherwise `415`. State-changing requests from an `Origin` outside the allowlist get `403` |
 | Collections | Return a JSON array; paginated collections also set `X-Total-Count` and accept `page` (0-based) and `perPage` |
 | Sorting | `sort=<field>` and `order=asc|desc` where noted |
 | Errors | `{ "error": { "code": "...", "message": "..." } }` with the HTTP status below |
@@ -35,6 +36,9 @@ CSV exports, admin registration lists, Google Places proxy) is deliberately excl
 | 403 | Authenticated but not the owner of the resource |
 | 404 | Not found |
 | 409 | Conflict (e.g. duplicate registration, mixed-organization order) |
+| 415 | POST without `Content-Type: application/json` |
+| 429 | Rate limited (magic-link requests) |
+| 502 | Payment provider (Mollie) error; nothing was charged or changed |
 
 ### Important behavioural note
 
@@ -44,47 +48,42 @@ ownership filtering happens server-side, never via a client-supplied `userId`.
 
 ---
 
-## 2. Authentication & account
+## 2. Authentication (magic link)
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/auth/register` | public | Create account and log in |
-| `POST` | `/api/auth/login` | public | Email + password login |
-| `POST` | `/api/auth/logout` | user | Destroy session |
-| `GET` | `/api/auth/me` | public | Current user or `null` |
-| `POST` | `/api/auth/password/forgot` | public | Send reset mail |
-| `POST` | `/api/auth/password/reset` | public | Set new password using token, logs in |
-| `GET` | `/api/auth/google` | public | Start Google OAuth (browser redirect) |
-| `GET` | `/api/auth/google/callback` | public | OAuth callback |
-| `GET` | `/api/auth/facebook` | public | Start Facebook OAuth (browser redirect) |
-| `GET` | `/api/auth/facebook/callback` | public | OAuth callback |
+| `POST` | `/api/v1/auth/magic-link` | public | Email a one-time login link |
+| `POST` | `/api/v1/auth/magic-link/verify` | public | Exchange the token for a session |
+| `POST` | `/api/v1/auth/logout` | user | Destroy session → `204` |
+| `GET` | `/api/v1/auth/me` | public | Current user or `null` |
 
-**`POST /api/auth/register`**
+Passwords, Google and Facebook login are gone. Existing accounts are matched by email
+(case-insensitive), so every existing user keeps their students, orders and credit.
+
+**`POST /api/v1/auth/magic-link`**
 
 ```json
-{
-  "email": "jan@example.com",
-  "password": "secret123",
-  "repeatPassword": "secret123",
-  "agreeToTerms": ["agrees"]
-}
+{ "email": "jan@example.com", "agreeToTerms": true, "redirectTo": "/winkelmand" }
 ```
 
-`201` → the `User` object (session established). `409` when the email already exists —
-the current implementation redirects to `/register?failed=true`; REST should return
-`{ "error": { "code": "EMAIL_TAKEN" } }`. Registration triggers the `register` welcome mail.
+Always `204`, whether or not the account exists. `redirectTo` must be a relative path (anything
+else is dropped) and is handed back by verify. `agreeToTerms` only matters when the email has no
+account yet. Limited to 3 requests / 15 min per email and 20 / 15 min per IP (`429`).
 
-**`POST /api/auth/login`** → `{ "email": "...", "password": "..." }`, `200` → `User`, `401` on bad credentials.
+The mail links to **`SHOP_URL/inloggen/verifieer?token=…`**, so the new client must implement that
+route. The link is valid for 15 minutes and can be used once.
 
-**`POST /api/auth/password/forgot`** → `{ "email": "..." }`. Always `204` (do not leak whether
-the account exists). Generates `resetToken` and mails `BASE_URL/wachtwoord-vergeten/<token>`.
+**`POST /api/v1/auth/magic-link/verify`** → `{ "token": "…", "agreeToTerms": true }`
 
-**`POST /api/auth/password/reset`** → `{ "token": "...", "password": "..." }`. `200` → `User`
-(session established, token cleared), `400` on unknown/expired token.
+- `200 { "user": User, "redirectTo": "/winkelmand" | null }` and the session cookie is set.
+- `400 INVALID_TOKEN` when the token is unknown, used or expired.
+- `409 TERMS_REQUIRED` when the email is new and terms were not accepted. The token is **not**
+  consumed: show the terms checkbox and call verify again with `agreeToTerms: true`.
 
-**OAuth note:** the two OAuth entry points stay full browser redirects; they cannot be
-fetch/XHR calls. After the callback the server redirects to the client root with a session
-cookie set, and the new client should then call `GET /api/auth/me`.
+Client page rules: call verify with `fetch` from the page (never let the API be opened with a GET,
+since mail scanners prefetch links and would burn the token). Strip `token` from the URL
+(`history.replaceState`) before calling verify. The localStorage cart is lost if the link opens in
+a different browser (mail apps' in-app browsers); consider asking for login before the cart fills.
 
 ---
 
@@ -92,17 +91,15 @@ cookie set, and the new client should then call `GET /api/auth/me`.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/me` | user | Current user profile (alias of `/api/auth/me`) |
-| `PATCH` | `/api/me` | user | Update own profile |
+| `GET` | `/api/v1/me` | user | Current user profile (alias of `/api/v1/auth/me`) |
+| `PATCH` | `/api/v1/me` | user | Update own profile |
 
-`PATCH` body — only these fields are writable by the client (server-side whitelist, as in
-`updateCurrentUser`):
+`PATCH` body: only these fields are writable (strict whitelist, unknown fields → `400`):
 
 ```json
 {
   "firstName": "Jan",
   "lastName": "Peeters",
-  "email": "jan@example.com",
   "secondEmail": "",
   "telephone": ["0470123456"],
   "address": { "postcode": "2000", "streetAddress": "", "city": "", "district": "",
@@ -110,7 +107,8 @@ cookie set, and the new client should then call `GET /api/auth/me`.
 }
 ```
 
-`role`, `credit`, `organizationIds` and `resetToken` are **not** client-writable.
+`email`, `role`, `credit` and `organizationIds` are **not** client-writable. `email` is the login
+identity: a self-service change would allow account takeover, so it is not offered in step 1.
 
 ### User object
 
@@ -141,11 +139,11 @@ Every student is owned by one or more users; the client only ever sees its own.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/students` | user | Own students |
-| `POST` | `/api/students` | user | Create (caller becomes owner) |
-| `GET` | `/api/students/{id}` | owner | Single student |
-| `PATCH` | `/api/students/{id}` | owner | Update |
-| `DELETE` | `/api/students/{id}` | owner | Delete → `204` |
+| `GET` | `/api/v1/students` | user | Own students |
+| `POST` | `/api/v1/students` | user | Create (caller becomes owner) |
+| `GET` | `/api/v1/students/{id}` | owner | Single student |
+| `PATCH` | `/api/v1/students/{id}` | owner | Update |
+| `DELETE` | `/api/v1/students/{id}` | owner | Delete → `204` |
 
 Body (create and update):
 
@@ -181,15 +179,16 @@ page addressed by `path` (the URL slug).
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/locations` | public | All visible locations |
-| `GET` | `/api/locations/{id}` | public | By id |
-| `GET` | `/api/locations/by-path/{path}` | public | By slug — used for `/{locationPath}` routes |
-| `GET` | `/api/locations/{id}/camps` | public | Camps at this location |
+| `GET` | `/api/v1/locations` | public | All visible locations |
+| `GET` | `/api/v1/locations/{id}` | public | By id |
+| `GET` | `/api/v1/locations/by-path/{path}` | public | By slug — used for `/{locationPath}` routes |
+| `GET` | `/api/v1/locations/{id}/camps` | public | Camps at this location |
 
-`GET /api/locations` query parameters: `visibility=VISIBLE` (client default), `organizationId`,
-`q` (text search), `page`, `perPage`, `sort`, `order`.
+`GET /api/v1/locations` query parameters: `visibility=VISIBLE|AUTO` (default: everything except
+`HIDDEN`), `organizationId`, `q` (matches name, city, postcode), `page`, `perPage`, `sort=name|path`,
+`order`. Hidden locations are never returned.
 
-`GET /api/locations/{id}/camps` query parameters: `year`, `excludePast=true`, `period`.
+`GET /api/v1/locations/{id}/camps` query parameters: `year`, `excludePast=true`, `period`.
 The client asks for `year = (today + 6 weeks).year()`. Hidden camps are never returned to
 non-admins.
 
@@ -218,14 +217,14 @@ Location object:
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/camps` | public | List / filter camps |
-| `GET` | `/api/camps/{id}` | public | Single camp |
-| `GET` | `/api/camps/available` | public | Bookable subset of a list of ids — cart revalidation |
+| `GET` | `/api/v1/camps` | public | List / filter camps |
+| `GET` | `/api/v1/camps/{id}` | public | Single camp |
+| `GET` | `/api/v1/camps/available` | public | Bookable subset of a list of ids — cart revalidation |
 
-`GET /api/camps` query parameters: `locationId`, `organizationId`, `period`, `year`,
-`excludePast=true`, `ids=a,b,c`, `q`, `page`, `perPage`, `sort`, `order`.
+`GET /api/v1/camps` query parameters: `locationId`, `organizationId`, `period`, `year`,
+`excludePast=true`, `ids=a,b,c`, `q`, `page`, `perPage`, `sort=from|period|name`, `order`.
 
-`GET /api/camps/available?ids=a,b,c` returns only camps with `status = OPEN` **and**
+`GET /api/v1/camps/available?ids=a,b,c` returns only camps with `status = OPEN` **and**
 `from > now` (the GraphQL `availableCamps` query). The client calls this on boot to drop
 stale items from the localStorage cart.
 
@@ -270,9 +269,9 @@ Expose them as sub-resources (returning `[]` when logged out):
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/camps/{id}/available-students` | user | Own students who can still be booked into this camp |
-| `GET` | `/api/camps/{id}/registered-students` | user | Own students already registered (status open, payment_pending, confirmed or deposited) |
-| `GET` | `/api/camps/{id}/registrations` | user | Own registrations for this camp |
+| `GET` | `/api/v1/camps/{id}/available-students` | user | Own students who can still be booked into this camp |
+| `GET` | `/api/v1/camps/{id}/registered-students` | user | Own students already registered (status open, payment_pending, confirmed or deposited) |
+| `GET` | `/api/v1/camps/{id}/registrations` | user | Own registrations for this camp |
 
 ---
 
@@ -292,7 +291,7 @@ server-side rules:
    organization; the server rolls the whole order back and returns `409` otherwise.
 3. **Force pay.** If any camp has `costDetail.forcePay`, the deposit option must be hidden —
    the order has to be paid in full.
-4. **Re-validate on load** via `GET /api/camps/available?ids=…` and `GET /api/students`,
+4. **Re-validate on load** via `GET /api/v1/camps/available?ids=…` and `GET /api/v1/students`,
    dropping items whose camp or student has disappeared.
 5. Totals shown in the cart are `sum(costDetail.total)` and `sum(costDetail.depositTotal)`.
 
@@ -304,16 +303,16 @@ An "order" is a group of registrations sharing an `orderId` (format `YYYYMMDD-##
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/orders` | user | Checkout: create registrations, optionally start payment |
-| `GET` | `/api/orders` | user | Own orders |
-| `GET` | `/api/orders/{orderId}` | user | Single order |
-| `POST` | `/api/orders/{orderId}/payment` | user | (Re)start payment for an outstanding order |
+| `POST` | `/api/v1/orders` | user | Checkout: create registrations, optionally start payment |
+| `GET` | `/api/v1/orders` | user | Own orders |
+| `GET` | `/api/v1/orders/{orderId}` | user | Single order |
+| `POST` | `/api/v1/orders/{orderId}/payment` | user | (Re)start payment for an outstanding order |
 
-`GET /api/orders` query parameters: `outstanding=true` returns only orders with status
-`open` or `deposited` for camps that have not ended yet — that is the banner on the
-dashboard.
+`GET /api/v1/orders` query parameters: `outstanding=true` returns only orders with status
+`open` or `deposited` for camps that have not ended yet (the banner on the dashboard), plus
+`page`, `perPage` and `order` (default `desc`, newest first). Sets `X-Total-Count`.
 
-**`POST /api/orders`** (replaces the `createOrder` mutation):
+**`POST /api/v1/orders`** (replaces the `createOrder` mutation):
 
 ```json
 {
@@ -336,9 +335,18 @@ dashboard.
 }
 ```
 
-Behaviour to preserve:
-- `409` if a non-cancelled registration already exists for that student/camp pair.
-- `409` if the registrations span more than one organization.
+Validation happens before anything is written:
+- `404` if a student is not the caller's or a camp does not exist.
+- `409 CAMP_NOT_BOOKABLE` unless every camp is `OPEN` and has not started.
+- `409 DUPLICATE_IN_ORDER` for the same student/camp twice; `409 ALREADY_REGISTERED` if an active
+  registration (open, payment_pending, confirmed, deposited) exists for the pair.
+- `409 MIXED_ORGANIZATIONS` if the camps span more than one organization.
+- `400 MISSING_OPTION` when a camp option (§7.1) is missing. Only fields for the camp's options are stored.
+- `400 DEPOSIT_NOT_AVAILABLE` when `deposit: true` but a camp has no deposit or is in the
+  force-pay window.
+- `502` if Mollie fails: the whole order is rolled back, including credit.
+
+Behaviour:
 - Store credit is applied first; if credit covers the whole amount, `payUrl` is `null` and
   the registrations are marked paid immediately.
 - A confirmation mail (`orderConfirmed`) and the conversion webhook fire on success.
@@ -348,8 +356,12 @@ Behaviour to preserve:
 - When `payUrl` is returned the client redirects the browser to it. Mollie returns the user
   to `BASE_URL/bestellingen/{orderId}`, so that route must exist in the new client.
 
-**`POST /api/orders/{orderId}/payment`** (replaces `payOrder`) returns the same
-`{ order, payUrl, credit }` shape for an order that is still open or deposit-only.
+**`POST /api/v1/orders/{orderId}/payment`** (replaces `payOrder`) returns the same
+`{ order, payUrl, credit }` shape for an order that is still open or deposit-only (`200`).
+- If a Mollie checkout for this order is still open, its `payUrl` is returned again instead of
+  creating a second payment.
+- `409 PAYMENT_PENDING` while a payment is being processed (e.g. bank transfer).
+- `409 NOTHING_TO_PAY` when the order is settled. `404` for orders that aren't the caller's.
 
 Order object:
 
@@ -373,11 +385,11 @@ Order object:
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/registrations` | user | Own registrations |
-| `GET` | `/api/registrations/{id}` | owner | Single registration |
-| `POST` | `/api/registrations/{id}/cancel` | owner | Cancel, refunding to store credit |
+| `GET` | `/api/v1/registrations` | user | Own registrations |
+| `GET` | `/api/v1/registrations/{id}` | owner | Single registration |
+| `POST` | `/api/v1/registrations/{id}/cancel` | owner | Cancel, refunding to store credit |
 
-`GET /api/registrations` query parameters: `campId`, `studentId`, `status`, `orderId`,
+`GET /api/v1/registrations` query parameters: `campId`, `studentId`, `status`, `orderId`,
 `organizationId`, `page`, `perPage`, `sort`, `order`.
 
 Registration object:
@@ -402,11 +414,15 @@ Registration object:
 
 `status` ∈ `open`, `payment_pending`, `confirmed`, `deposited`, `canceled`, `refunded`.
 
+Also included: `shortSize`, `shoeSize`, `camp.name` and `organizationId` (to look up whose
+terms apply).
+
 `canCancel` is server-computed: `true` only for `open`, `confirmed` and `deposited`, and
 only while the camp start is further away than `Settings.cancelDays`. The client must use
 this flag rather than deriving it.
 
-**`POST /api/registrations/{id}/cancel`** → `200`:
+**`POST /api/v1/registrations/{id}/cancel`** → `200`. `409 NOT_CANCELLABLE` when `canCancel` is
+false, `409 PAYMENT_IN_PROGRESS` while a Mollie payment for the order is open or pending:
 
 ```json
 {
@@ -425,18 +441,18 @@ total and the client should refresh its cached user with it.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/organizations/{id}` | public | By id — used at checkout to show whose terms apply |
-| `GET` | `/api/organizations/by-path/{path}` | public | By slug |
-| `GET` | `/api/terms` | public | Global terms HTML |
-| `GET` | `/api/organizations/{path}/terms` | public | Organization-specific terms HTML |
-| `GET` | `/api/settings` | public | Public settings subset |
+| `GET` | `/api/v1/organizations/{id}` | public | By id — used at checkout to show whose terms apply |
+| `GET` | `/api/v1/organizations/by-path/{path}` | public | By slug |
+| `GET` | `/api/v1/terms` | public | Global terms HTML |
+| `GET` | `/api/v1/organizations/{path}/terms` | public | Organization-specific terms HTML |
+| `GET` | `/api/v1/settings` | public | Public settings subset |
 
 The client routes `/algemene_voorwaarden` and `/algemene_voorwaarden_{path}` map onto the
 two terms endpoints; both return raw HTML inside `{ "terms": "<html>" }`.
 
-Organization object: `{ "id": "…", "name": "…", "path": "v", "url": "https://shop.voetbalstages.be/v" }`.
+Organization object: `{ "id": "…", "name": "…", "path": "v", "url": "<SHOP_URL>/v" }`.
 
-`GET /api/settings` must expose only what the public site needs — currently
+`GET /api/v1/settings` must expose only what the public site needs — currently
 `{ "earlyBirdToInc": "2026-05-01T00:00:00.000Z" }`. Deposit/cancel/force-pay day counts stay
 server-side; their effect is already baked into `costDetail` and `canCancel`.
 
@@ -448,7 +464,7 @@ Listed for completeness because the checkout flow depends on it:
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/payments/webhook` | Mollie | Payment status callback; flips registrations to `confirmed`/`deposited` |
+| `POST` | `/api/v1/payments/webhook` | Mollie | Form-encoded `id=tr_…`. The payment is re-fetched from Mollie; only payments created by this service are processed |
 
 The client never calls this. It only redirects to `payUrl` and later lands on
 `/bestellingen/{orderId}`, where it re-fetches the order. Because the webhook may not have
@@ -458,51 +474,53 @@ arrived yet, that page should tolerate a still-`payment_pending` order and re-po
 
 ## 12. Endpoint summary
 
+All paths are under `/api/v1`.
+
 ```
-POST   /api/auth/register
-POST   /api/auth/login
-POST   /api/auth/logout
-GET    /api/auth/me
-POST   /api/auth/password/forgot
-POST   /api/auth/password/reset
-GET    /api/auth/google            (+ /callback)
-GET    /api/auth/facebook          (+ /callback)
+POST   /auth/magic-link
+POST   /auth/magic-link/verify
+POST   /auth/logout
+GET    /auth/me
 
-GET    /api/me
-PATCH  /api/me
+GET    /me
+PATCH  /me
 
-GET    /api/students
-POST   /api/students
-GET    /api/students/{id}
-PATCH  /api/students/{id}
-DELETE /api/students/{id}
+GET    /students
+POST   /students
+GET    /students/{id}
+PATCH  /students/{id}
+DELETE /students/{id}
 
-GET    /api/locations
-GET    /api/locations/{id}
-GET    /api/locations/by-path/{path}
-GET    /api/locations/{id}/camps
+GET    /locations
+GET    /locations/{id}
+GET    /locations/by-path/{path}
+GET    /locations/{id}/camps
 
-GET    /api/camps
-GET    /api/camps/available
-GET    /api/camps/{id}
-GET    /api/camps/{id}/available-students
-GET    /api/camps/{id}/registered-students
-GET    /api/camps/{id}/registrations
+GET    /camps
+GET    /camps/available
+GET    /camps/{id}
+GET    /camps/{id}/available-students
+GET    /camps/{id}/registered-students
+GET    /camps/{id}/registrations
 
-POST   /api/orders
-GET    /api/orders
-GET    /api/orders/{id}
-POST   /api/orders/{id}/payment
+POST   /orders
+GET    /orders
+GET    /orders/{orderId}
+POST   /orders/{orderId}/payment
 
-GET    /api/registrations
-GET    /api/registrations/{id}
-POST   /api/registrations/{id}/cancel
+GET    /registrations
+GET    /registrations/{id}
+POST   /registrations/{id}/cancel
 
-GET    /api/organizations/{id}
-GET    /api/organizations/by-path/{path}
-GET    /api/organizations/{path}/terms
-GET    /api/terms
-GET    /api/settings
+GET    /organizations/{id}
+GET    /organizations/by-path/{path}
+GET    /organizations/{path}/terms
+GET    /terms
+GET    /settings
 
-POST   /api/payments/webhook       (Mollie only)
+POST   /payments/webhook           (Mollie only)
+
+GET    /docs                       (Swagger UI)
+GET    /openapi.json
+GET    /health                     (outside /api/v1)
 ```

@@ -1,0 +1,15 @@
+head
+  link(rel="stylesheet" href="/style.css", data-inline)
+
+div.container
+  include ../includes/header.pug
+  div.content
+    p Beste #{name},
+    p De onderstaande inschrijving werd geannuleerd. Deze is onderdeel van bestelling <a href=#{orderLink}>#{orderId}</a>.
+    include ../includes/registrations.pug
+    if addedCredit
+      p Er werd <b>#{addedCredit}</b> toegevoegd aan uw account. Hiermee kan u toekomstige inschrijvingen betalen.
+    p We hopen u snel bij <a href="https://shop.voetbalstages.be/">een andere stage</a> te mogen verwelkomen!
+    p Heeft u nog vragen of opmerkingen kan u steeds terecht op de FAQ-pagina: <a href="http://www.voetbalstages.be/contact">http://www.voetbalstages.be/contact</a>
+    include ../includes/greeting.pug
+  include ../includes/footer.pug
