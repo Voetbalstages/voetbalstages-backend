@@ -12,10 +12,10 @@ Mollie (REST), AWS SES via `email-templates` (pug), vitest + mongodb-memory-serv
 ```sh
 cp .env.example .env          # defaults point at a local Mongo, mails are logged not sent
 docker run -d -p 27017:27017 --name vs-mongo mongo:8.0.17   # or use the old repo's compose Mongo
-npm install
-npm run dev                   # http://localhost:3000/api/v1/docs
-npm test                      # in-memory Mongo, no network needed after first run
-npm run typecheck
+bun install
+bun run dev                   # http://localhost:3000/api/v1/docs
+bun run test                #  in-memory Mongo, no network needed after first run
+bun run typecheck
 ```
 
 The session cookie is `__Host-` prefixed (Secure), so use `http://localhost` (browsers treat it

@@ -1,18 +1,24 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-alpine AS build
+# bun installs and builds; the app itself still runs on Node.
+FROM oven/bun:1-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
+
+FROM oven/bun:1-alpine AS build
+WORKDIR /app
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
-RUN npm run build && npm prune --omit=dev
+RUN bun run build
 
 FROM node:24-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 # WORKDIR must stay /app: email-templates resolves ./emails from the working directory.
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json ./
 COPY --chown=node:node emails ./emails
