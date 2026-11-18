@@ -69,8 +69,14 @@ jobs:
             echo "::error::COOLIFY_TOKEN secret is not set, cannot deploy"
             exit 1
           fi
-          curl --fail --silent --show-error -X GET "$COOLIFY_WEBHOOK_URL" \
-            -H "Authorization: Bearer $COOLIFY_TOKEN"
+          code="$(curl --silent --show-error --output response.txt --write-out '%{http_code}' \
+            -X POST "$COOLIFY_WEBHOOK_URL" -H "Authorization: Bearer $COOLIFY_TOKEN")"
+          echo "Coolify answered HTTP $code"
+          head -c 500 response.txt; echo
+          case "$code" in
+            2*) ;;
+            *) echo "::error::Coolify deploy request failed with HTTP $code"; exit 1 ;;
+          esac
 
   deploy-staging:
     needs: image
@@ -90,5 +96,11 @@ jobs:
             echo "::error::COOLIFY_TOKEN secret is not set, cannot deploy"
             exit 1
           fi
-          curl --fail --silent --show-error -X GET "$COOLIFY_WEBHOOK_URL" \
-            -H "Authorization: Bearer $COOLIFY_TOKEN"
+          code="$(curl --silent --show-error --output response.txt --write-out '%{http_code}' \
+            -X POST "$COOLIFY_WEBHOOK_URL" -H "Authorization: Bearer $COOLIFY_TOKEN")"
+          echo "Coolify answered HTTP $code"
+          head -c 500 response.txt; echo
+          case "$code" in
+            2*) ;;
+            *) echo "::error::Coolify deploy request failed with HTTP $code"; exit 1 ;;
+          esac
