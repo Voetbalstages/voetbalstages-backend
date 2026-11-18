@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { LoginTokens } from '../src/db/models/index.js'
 import { outbox } from '../src/services/mailer.js'
 import { api, daysFromNow, seedSettings, seedUser, Users, Sessions } from './helpers.js'

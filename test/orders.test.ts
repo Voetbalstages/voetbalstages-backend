@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { outbox } from '../src/services/mailer.js'
 import {
   FakeMollie,
@@ -14,7 +14,8 @@ import {
   seedStudent,
   seedUser,
   login,
-  world
+  world,
+  waitFor
 } from './helpers.js'
 
 const item = (campId: unknown, studentId: unknown, extra = {}) => ({
@@ -35,7 +36,7 @@ describe('POST /orders', () => {
     expect(mollie.created).toHaveLength(0)
     const reg = await Registrations.findOne().lean()
     expect(reg?.price).toBeUndefined() // pay-later keeps recalculating, like today
-    await vi.waitFor(() => expect(outbox.map(m => m.template)).toContain('orderConfirmed'))
+    await waitFor(() => expect(outbox.map(m => m.template)).toContain('orderConfirmed'))
   })
 
   it('payNow starts a Mollie payment, locks the price and stores the payment JSON', async () => {

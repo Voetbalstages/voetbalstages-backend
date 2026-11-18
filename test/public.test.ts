@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { api, daysFromNow, seedCamp, seedLocation, seedOrg, seedSettings, seedStudent, seedUser, login, seedRegistration } from './helpers.js'
 
 describe('public catalogue', () => {

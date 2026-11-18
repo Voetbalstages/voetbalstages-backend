@@ -35,6 +35,19 @@ export const api = async (method: string, path: string, body?: unknown, opts: Op
   return { status: res.status, headers: res.headers, body: text ? JSON.parse(text) : null }
 }
 
+/** Retries an assertion until it passes; background work (fire-and-forget mails) lands after the response. */
+export const waitFor = async (assertion: () => void, timeoutMs = 2000) => {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    try {
+      return assertion()
+    } catch (err) {
+      if (Date.now() > deadline) throw err
+      await new Promise(r => setTimeout(r, 10))
+    }
+  }
+}
+
 export const seedSettings = (overrides: Record<string, unknown> = {}) =>
   SettingsModel.collection.insertOne({
     earlyBirdDiscount: 15,

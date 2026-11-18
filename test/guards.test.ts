@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { Sessions, Students, api, daysFromNow, login, seedStudent, seedUser, world } from './helpers.js'
 import { randomToken, sha256 } from '../src/lib/ids.js'
 

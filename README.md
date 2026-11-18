@@ -4,8 +4,8 @@ REST API for the voetbalstages shop client. It runs side by side with the old Ex
 GraphQL backend on the **same MongoDB**. See [REFACTOR.md](REFACTOR.md) for the migration plan
 and [DEV_REST_API.md](DEV_REST_API.md) for the API contract. Live docs: `/api/v1/docs`.
 
-Stack: Node 24, TypeScript, [Hono](https://hono.dev) + `@hono/zod-openapi`, Mongoose 8,
-Mollie (REST), AWS SES via `email-templates` (pug), vitest + mongodb-memory-server.
+Stack: Bun, TypeScript, [Hono](https://hono.dev) + `@hono/zod-openapi`, Mongoose 8,
+Mollie (REST), AWS SES via `email-templates` (pug), `bun test` + a throwaway `mongod`.
 
 ## Develop
 

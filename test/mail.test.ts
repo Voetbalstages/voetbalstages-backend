@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { renderMail } from '../src/services/mailer.js'
 import { statusTranslations } from '../src/services/orderMail.js'
 

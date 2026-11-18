@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { api, daysFromNow, seedCamp, seedLocation, seedOrg, seedSettings } from './helpers.js'
 
 const ids = (body: { id: string }[]) => body.map(r => r.id)
