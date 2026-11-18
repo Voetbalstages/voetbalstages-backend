@@ -41,10 +41,13 @@ export interface UserLike {
   role?: string | null
 }
 
-export const serializeAddress = (a?: Record<string, unknown> | null) => {
+const ADDRESS_FIELDS = ['formatted', 'streetAddress', 'postcode', 'district', 'city', 'province', 'lat', 'lng', 'placeId'] as const
+
+export const serializeAddress = (a?: object | null) => {
   if (!a) return null
-  const { _id, ...rest } = a as Record<string, unknown>
-  return rest as UserJson['address']
+  // Mongoose subdocuments carry internals ($__parent -> the whole user incl. hash/salt): copy known fields only
+  const src = ('toObject' in a && typeof a.toObject === 'function' ? a.toObject() : a) as Record<string, unknown>
+  return Object.fromEntries(ADDRESS_FIELDS.filter(k => src[k] !== undefined).map(k => [k, src[k]])) as UserJson['address']
 }
 
 export const serializeUser = (u: UserLike): UserJson => {
