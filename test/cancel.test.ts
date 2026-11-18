@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { outbox } from '../src/services/mailer.js'
 import { FakeMollie, Payments, Registrations, Users, api, daysFromNow, seedCamp, seedRegistration, world } from './helpers.js'
 
@@ -10,6 +10,7 @@ describe('POST /registrations/{id}/cancel', () => {
     const res = await api('POST', `/registrations/${id}/cancel`, undefined, { cookie: w.cookie })
     expect(res.status).toBe(200)
     expect(res.body).toMatchObject({ credit: 205, registration: { status: 'refunded', paid: 0, canCancel: false } })
+    await vi.waitFor(() => expect(outbox).toHaveLength(1))
     expect(outbox[0]).toMatchObject({ template: 'registrationCanceled' })
     expect(outbox[0]!.data.addedCredit).toMatch(/195/)
   })

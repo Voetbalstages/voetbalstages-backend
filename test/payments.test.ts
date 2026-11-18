@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { outbox } from '../src/services/mailer.js'
 import { FakeMollie, Payments, Registrations, api, webhook, world } from './helpers.js'
 
@@ -23,7 +23,7 @@ describe('Mollie webhook', () => {
     expect((await webhook(paymentId)).status).toBe(200)
     expect((await webhook(paymentId)).status).toBe(200)
     expect(await Registrations.findOne().lean()).toMatchObject({ status: 'confirmed', paid: 195, price: 195 })
-    expect(outbox.filter(m => m.template === 'paymentConfirmed')).toHaveLength(1)
+    await vi.waitFor(() => expect(outbox.filter(m => m.template === 'paymentConfirmed')).toHaveLength(1))
     expect(await Payments.findOne({ id: paymentId }).lean()).toMatchObject({ status: 'paid' })
   })
 
@@ -32,7 +32,7 @@ describe('Mollie webhook', () => {
     mollie.setStatus(paymentId, 'paid')
     await webhook(paymentId)
     expect(await Registrations.findOne().lean()).toMatchObject({ status: 'deposited', paid: 50 })
-    expect(outbox.map(m => m.template)).toEqual(['depositConfirmed'])
+    await vi.waitFor(() => expect(outbox.map(m => m.template)).toEqual(['depositConfirmed']))
   })
 
   it('an expired checkout reopens payment_pending registrations', async () => {
