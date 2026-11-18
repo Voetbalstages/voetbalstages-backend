@@ -82,7 +82,7 @@ The old backend and admin read and write the same collections. Until step 3 of t
 | MongoDB | container, port published | container, authenticated, internal only, persistent volume | the existing database |
 | Seed data | on first start | on first start, refreshed once all camps are past | never |
 | `DEV_TOOLS` (fake Mollie, login links in logs) | on | on | refused at startup |
-| Image | built locally | `ghcr.io/…:staging` (branch `staging`) | `ghcr.io/…:latest` (branch `master`) |
+| Image | built locally | `ghcr.io/…:staging` (branch `staging`) | `ghcr.io/…:latest` (branch `main`) |
 
 `APP_ENV` defaults to `production`, and the API refuses to start with `DEV_TOOLS=true` in that case,
 so a forgotten variable can never turn on fake payments in production.
@@ -121,7 +121,7 @@ access to people who may use staging.
 
 ## Deploy (Coolify)
 
-On every push to `master`, GitHub Actions runs typecheck + tests, then builds and pushes
+On every push to `main`, GitHub Actions runs typecheck + tests, then builds and pushes
 `ghcr.io/voetbalstages/voetbalstages-backend:{latest,<sha>}`, then calls the Coolify deploy webhook.
 
 One-time setup:
