@@ -3,7 +3,7 @@ import { campOptions, registrationStatuses } from './db/models/index.js'
 
 export const ObjectIdParam = z
   .string()
-  .regex(/^[a-f\d]{24}$/i)
+  .regex(/^[a-fA-F\d]{24}$/)
   .openapi({ example: '64b7f0c2a1b2c3d4e5f60718' })
 
 export const IdParams = z.object({ id: ObjectIdParam.openapi({ param: { name: 'id', in: 'path' } }) })

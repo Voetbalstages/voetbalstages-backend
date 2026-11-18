@@ -114,3 +114,15 @@ describe('students', () => {
     expect((await api('DELETE', `/students/${created.body.id}`, undefined, { cookie })).status).toBe(204)
   })
 })
+
+describe('OpenAPI document', () => {
+  it('has no regex flags leaked into string patterns (Swagger UI validates them client-side)', async () => {
+    const res = await api('GET', '/openapi.json')
+    const patterns = [...JSON.stringify(res.body).matchAll(/"pattern":"((?:[^"\\]|\\.)*)"/g)].map(m => m[1]!)
+    expect(patterns.length).toBeGreaterThan(0)
+    for (const p of patterns) expect(p).not.toMatch(/\/[gimsuy]+$/)
+    const id = '6afd87132eccafb885411d15'
+    const objectId = patterns.find(p => p.includes('{24}'))!
+    expect(new RegExp(JSON.parse(`"${objectId}"`)).test(id)).toBe(true)
+  })
+})
