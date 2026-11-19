@@ -23,7 +23,9 @@ app.openapi(
     summary: 'Email a one-time login link',
     description:
       'Always 204, whether or not the account exists. `redirectTo` must be a relative path and is ' +
-      'returned again by verify. `agreeToTerms` is only used when the email has no account yet.',
+      'returned again by verify. `agreeToTerms` is only used when the email has no account yet. ' +
+      '`target: "admin"` mails a link to the admin panel (`ADMIN_URL`) instead of the shop; it is only ' +
+      'sent to ADMIN/MANAGER accounts and never creates an account.',
     request: {
       body: {
         content: {
@@ -31,7 +33,8 @@ app.openapi(
             schema: z.object({
               email: z.email().max(254),
               agreeToTerms: z.boolean().optional(),
-              redirectTo: z.string().max(500).optional()
+              redirectTo: z.string().max(500).optional(),
+              target: z.enum(['shop', 'admin']).optional()
             })
           }
         }

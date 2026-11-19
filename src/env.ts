@@ -25,6 +25,8 @@ const schema = z
 
   API_URL: z.url().transform(u => u.replace(/\/$/, '')),
   SHOP_URL: z.url().transform(u => u.replace(/\/$/, '')),
+  // Admin panel origin: where admin login links point. Add it to CORS_ORIGINS too.
+  ADMIN_URL: z.url().transform(u => u.replace(/\/$/, '')).optional(),
   CORS_ORIGINS: csv,
   TRUSTED_PROXY_COUNT: z.coerce.number().int().min(0).default(1),
 

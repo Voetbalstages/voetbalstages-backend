@@ -114,7 +114,8 @@ One-time setup:
 |---|---|
 | `API_URL` | the public URL of the `api` domain (Mollie redirects and fake checkout links use it) |
 | `SHOP_URL` | staging shop origin (magic links, order redirects) |
-| `CORS_ORIGINS` | the same staging shop origin |
+| `CORS_ORIGINS` | the staging shop origin and the admin origin (comma-separated) |
+| `ADMIN_URL` | staging admin origin (admin login links); must share the API's registrable domain |
 | `TRUSTED_PROXY_COUNT` | optional, default `1` (Traefik); `2` with Cloudflare in front |
 | `API_IMAGE`, `MONGO_VERSION`, `LOG_LEVEL` | optional overrides |
 
@@ -142,7 +143,8 @@ One-time setup:
 | `MONGO_URI` | same database as the old backend (step 2) |
 | `API_URL` | `https://api.voetbalstages.be` (Mollie webhook base) |
 | `SHOP_URL` | new client origin: magic links, Mollie redirect, mail links |
-| `CORS_ORIGINS` | comma-separated exact origins, e.g. `https://nieuw.voetbalstages.be` |
+| `CORS_ORIGINS` | comma-separated exact origins, e.g. `https://nieuw.voetbalstages.be` (plus the admin origin) |
+| `ADMIN_URL` | optional admin panel origin, e.g. `https://admin.voetbalstages.be`: `POST /auth/magic-link` with `target: "admin"` mails a link there (staff only) |
 | `TRUSTED_PROXY_COUNT` | `1` behind Coolify's Traefik, `2` with Cloudflare in front |
 | `MAIL_DISABLED` | `false` in production |
 | `AWS_SES_REGION`, `AWS_SES_USER_KEY`, `AWS_SES_USER_SECRET` | same SES user as the old backend |

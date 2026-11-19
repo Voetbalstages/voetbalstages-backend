@@ -19,6 +19,26 @@ const cookieFrom = (headers: Headers) => {
   return raw.split(';')[0]!
 }
 
+describe('admin magic link', () => {
+  it('mails an admin-panel link to staff only and never creates accounts', async () => {
+    await seedSettings()
+    await seedUser({ email: 'boss@example.com', role: 'ADMIN' })
+    await seedUser({ email: 'parent@example.com' })
+
+    for (const email of ['parent@example.com', 'nobody@example.com'])
+      expect((await api('POST', '/auth/magic-link', { email, target: 'admin' })).status).toBe(204)
+    expect(outbox).toHaveLength(0)
+    expect(await Users.countDocuments({ email: 'nobody@example.com' })).toBe(0)
+
+    expect((await api('POST', '/auth/magic-link', { email: 'boss@example.com', target: 'admin' })).status).toBe(204)
+    const url = new URL(String(outbox.at(-1)!.data.url))
+    expect(url.origin + url.pathname).toBe('https://admin.test/login/verify')
+    const verify = await api('POST', '/auth/magic-link/verify', { token: url.searchParams.get('token')! })
+    expect(verify.status).toBe(200)
+    expect(verify.body.user.role).toBe('ADMIN')
+  })
+})
+
 describe('magic link login', () => {
   it('logs an existing user into their account and never touches the password hash', async () => {
     await seedSettings()

@@ -33,8 +33,13 @@ export const requestMagicLink = async (input: {
   email: string
   agreeToTerms?: boolean
   redirectTo?: string
+  target?: 'shop' | 'admin'
 }) => {
   const email = normalizeEmail(input.email)
+  const user = await findUserByEmail(email)
+  const admin = input.target === 'admin'
+  // Admin links never create accounts and are only sent to staff (still a silent 204 for everyone else).
+  if (admin && (!env.ADMIN_URL || !user?.role)) return
   const token = randomToken()
   await LoginTokens.create({
     tokenHash: sha256(token),
@@ -43,10 +48,10 @@ export const requestMagicLink = async (input: {
     agreeToTerms: input.agreeToTerms === true,
     expiresAt: new Date(Date.now() + TOKEN_TTL_MS)
   })
-  const user = await findUserByEmail(email)
+  const base = admin ? `${env.ADMIN_URL}/login/verify` : `${env.SHOP_URL}/inloggen/verifieer`
   await sendMail(email, 'magicLink', {
     name: user?.firstName || '',
-    url: `${env.SHOP_URL}/inloggen/verifieer?token=${encodeURIComponent(token)}`,
+    url: `${base}?token=${encodeURIComponent(token)}`,
     minutes: TOKEN_TTL_MS / 60000
   })
 }
