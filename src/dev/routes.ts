@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { handlePaymentWebhook } from '../services/payments.js'
 import { fakePayment, setFakeStatus } from './fakeMollie.js'
 import type { MolliePayment } from '../services/mollie.js'
+import { outbox } from '../services/mailer.js'
 
 /** Only mounted when DEV_TOOLS=true. GET with side effects is fine for a local fake. */
 const app = new Hono()
@@ -38,6 +39,12 @@ app.get('/checkout/:id/:outcome', async c => {
   if (!found || !chosen) return c.text('Unknown payment or outcome', 404)
   await handlePaymentWebhook(id)
   return c.redirect(found.redirectUrl)
+})
+
+/** Mails the API would have sent (MAIL_DISABLED=true), newest last: lets e2e tests read login links. */
+app.get('/mail', c => {
+  const to = c.req.query('to')?.trim().toLowerCase()
+  return c.json(outbox.filter(m => !to || m.to === to).slice(-10))
 })
 
 export default app
