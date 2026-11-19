@@ -42,7 +42,7 @@ describe('GET /locations', () => {
     expect(visible.body.map((l: { path: string }) => l.path).sort()).toEqual(['antwerpen', 'gent'])
     const auto = await api('GET', '/locations?visibility=AUTO')
     expect(auto.body.map((l: { path: string }) => l.path)).toEqual(['auto'])
-    expect((await api('GET', '/locations?visibility=HIDDEN')).status).toBe(400)
+    expect((await api('GET', '/locations?visibility=HIDDEN')).body).toEqual([]) // staff-only, nothing for the public
   })
 
   it('sorts by name asc by default and supports order=desc and pagination', async () => {
@@ -148,7 +148,7 @@ describe('GET /camps', () => {
     await catalogue()
     expect((await api('GET', '/camps?locationId=bad')).status).toBe(400)
     expect((await api('GET', '/camps?year=1800')).status).toBe(400)
-    expect((await api('GET', '/camps?sort=cost')).status).toBe(400)
+    expect((await api('GET', '/camps?sort=bogus')).status).toBe(400)
   })
 })
 

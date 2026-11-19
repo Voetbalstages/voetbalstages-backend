@@ -1,9 +1,13 @@
 # Client REST API specification
 
 A REST equivalent of everything the **client** front-end (`/client`) needs from the server.
-Scope: only endpoints reachable from the public booking flow. All admin/manager-only
-functionality (camp/location/organization CRUD, user administration, settings mutations,
-CSV exports, admin registration lists, Google Places proxy) is deliberately excluded.
+
+> **One API, two audiences.** The shop and the admin panel call the *same* routes. There is no
+> separate admin API: the logged-in user decides what a call returns and what it may do. A parent
+> sees and changes their own data; staff (`ADMIN`, `MANAGER`) see more and an `ADMIN` can write
+> catalogue data. See [Part B](#part-b-roles-and-permissions) for the full rules. Operations that
+> need a role say **Requires: ADMIN** / **staff** in their Swagger description, and the few
+> resources that only staff use (`/users`) are listed there too. Shop developers can ignore those.
 
 **Implemented in this repo (step 1 of [REFACTOR.md](REFACTOR.md)). Live, always-current docs: `GET /api/v1/docs` (Swagger UI) and `GET /api/v1/openapi.json`.**
 
@@ -44,7 +48,8 @@ CSV exports, admin registration lists, Google Places proxy) is deliberately excl
 
 Today **every list endpoint is implicitly scoped to the logged-in user**: a non-admin only
 ever sees their own students, registrations and orders. The REST API must keep that —
-ownership filtering happens server-side, never via a client-supplied `userId`.
+ownership filtering happens server-side, never via a client-supplied `userId`. Staff are the
+exception and see more on the same routes, see [Part B](#part-b-roles-and-permissions).
 
 ---
 
@@ -485,6 +490,15 @@ GET    /auth/me
 GET    /me
 PATCH  /me
 
+GET    /users                      (staff)
+GET    /users/export               (staff)
+GET    /users/{id}                 (staff)
+PATCH  /users/{id}                 (ADMIN)
+
+POST   /uploads/logo               (ADMIN)
+GET    /places/autocomplete        (login)
+GET    /places/{placeId}           (login)
+
 GET    /students
 POST   /students
 GET    /students/{id}
@@ -495,6 +509,8 @@ GET    /locations
 GET    /locations/{id}
 GET    /locations/by-path/{path}
 GET    /locations/{id}/camps
+POST   /locations                  (ADMIN)
+PATCH  /locations/{id}             (ADMIN)
 
 GET    /camps
 GET    /camps/available
@@ -502,6 +518,9 @@ GET    /camps/{id}
 GET    /camps/{id}/available-students
 GET    /camps/{id}/registered-students
 GET    /camps/{id}/registrations
+GET    /camps/{id}/registrations/export   (staff)
+POST   /camps                      (ADMIN)
+PATCH  /camps/{id}                 (ADMIN)
 
 POST   /orders
 GET    /orders
@@ -511,12 +530,17 @@ POST   /orders/{orderId}/payment
 GET    /registrations
 GET    /registrations/{id}
 POST   /registrations/{id}/cancel
+PATCH  /registrations/{id}         (ADMIN)
 
+GET    /organizations
+POST   /organizations              (ADMIN)
+PATCH  /organizations/{id}         (ADMIN)
 GET    /organizations/{id}
 GET    /organizations/by-path/{path}
 GET    /organizations/{path}/terms
 GET    /terms
 GET    /settings
+PATCH  /settings                   (ADMIN)
 
 POST   /payments/webhook           (Mollie only)
 
@@ -524,3 +548,106 @@ GET    /docs                       (Swagger UI)
 GET    /openapi.json
 GET    /health                     (outside /api/v1)
 ```
+
+---
+---
+
+# Part B: Roles and permissions
+
+The admin panel uses the routes from sections 1-12. This part lists what changes with the role
+of the logged-in user. Everything not listed here behaves as documented above.
+
+## B1. Roles
+
+| Role | Who | Can |
+|---|---|---|
+| *(none)* / anonymous | Parent / visitor | Public reads; manage **own** profile, children, orders, registrations |
+| `MANAGER` | Staff of one or more organizations (`organizationIds`) | **Read-only.** Also sees `HIDDEN` camps/locations of their own organizations, and the extra fields below |
+| `ADMIN` | Full access | Everything a manager can, plus every write below and cancelling any registration |
+
+Login is the same magic link as the shop (open decision in [REFACTOR.md](REFACTOR.md) step 3:
+whether admins later get a separate login). `GET /me` returns `role`, `organizationIds` and, for
+staff, `organizations` (all of them for an admin): what the organization switcher needs. The old
+`Context-Organization` header is replaced by the optional `organizationId` query on list routes.
+
+## B2. Same route, different result
+
+| Route | Parent / anonymous | Staff |
+|---|---|---|
+| `GET /students` | own children | **all children**; extra filters `name`, `ownerId`, `ids` |
+| `GET /students/{id}` | own | any |
+| `PATCH` / `DELETE /students/{id}` | own | **ADMIN**: any child. Manager: read-only |
+| `GET /registrations` | own | **all** (MANAGER: own organizations); extra filters `userId`, `locationId`, `year`, `period`, `orderId` (prefix) |
+| `GET /registrations/{id}` | own | any (MANAGER: own organizations) |
+| `POST /registrations/{id}/cancel` | own, within `cancelDays`, no open payment | **ADMIN**: any registration, any time; refund goes to the owning parent |
+| `GET /camps`, `GET /camps/{id}` | not `HIDDEN` | **ADMIN**: all statuses; **MANAGER**: also `HIDDEN` of own organizations. Extra filter `status` (stored status) |
+| `GET /locations`, `/{id}`, `/by-path/{path}`, `/{id}/camps` | not `HIDDEN` | same rule as camps; `visibility` filter accepts `HIDDEN` |
+| `GET /camps/{id}/registrations` | own registrations for the camp | **every** registration of the camp (all parents, all statuses, optional `status`) |
+| `GET /organizations`, `/{id}`, `/by-path/{path}` | `id`, `name`, `path`, `url` | adds `mollieProfileId` and `terms` (ADMIN, or MANAGER of that organization) |
+| `GET /settings` | `earlyBirdToInc` only | adds `earlyBirdDiscount`, `depositDays`, `forcePayDays`, `cancelDays`, `emailFrom`, `terms` |
+| `GET /me` | the user | adds `organizations` |
+
+Camp and location objects always include the extra fields `storedStatus`, `cost`, `deposit`,
+`earlyBirdToInc`, `locationId`, `organizationId` (camp) and `visibility`, `organizationId`
+(location): they are not secret and make the objects editable as-is. Registrations always include
+`price`, the full `student` (`dob`, `food`, `foodOther`, `currentClub`, `remarks`) and the owning `user`
+(names, emails, telephone): for a parent that is their own data.
+
+## B3. Write routes that need `ADMIN`
+
+`403 FORBIDDEN` for managers and parents (`401` when anonymous).
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/organizations` | `mollieProfileId` must look like `pfl_xxxx`; `path` is a unique lowercase slug (`409 PATH_TAKEN`) |
+| `PATCH` | `/organizations/{id}` | Partial. Organizations cannot be deleted |
+| `POST` | `/locations` | `name`, `path`, `organizationId` required; `visibility` defaults to `HIDDEN` |
+| `PATCH` | `/locations/{id}` | Partial; `address` replaced as a whole; changing organization refused with `409 HAS_CAMPS` once camps exist. No delete |
+| `POST` | `/camps` | `locationId`, `from`, `to`, `period`, `cost` required; organization comes from the location; dates stored at 11:00 UTC; `400 DEPOSIT_TOO_HIGH`, `400 INVALID_DATES` |
+| `PATCH` | `/camps/{id}` | Partial. A price change applies to every registration that is not fully paid. Status `CANCELED` does **not** cancel registrations. `409 HAS_REGISTRATIONS` when moving to another organization. No delete |
+| `PATCH` | `/registrations/{id}` | `status` (label only: no credit, no mail), `campId` (same organization; `409 DUPLICATE_REGISTRATION`, `409 ORGANIZATION_MISMATCH`), `price` (custom amount, `null` clears), `gadgets`, `tshirtSize` |
+| `PATCH` | `/settings` | Partial; the settings document must already exist |
+| `PATCH` | `/users/{id}` | See below |
+
+## B4. Staff-only and login-only routes
+
+| Method | Path | Who | Description |
+|---|---|---|---|
+| `GET` | `/users` | staff | Search: `firstName`, `lastName`, `email`, `postcode`, `role`, `q`, `ids`, `sort`. Like the old admin, managers can list all users |
+| `GET` | `/users/export` | staff | `text/csv` marketing export; same filters as the list |
+| `GET` | `/users/{id}` | staff | The user plus `students` and `organizations` |
+| `PATCH` | `/users/{id}` | ADMIN | Names, emails, `telephone`, `address`, `credit` (absolute), `role` (`ADMIN`/`MANAGER`/`null`), `organizationIds`. `409 MANAGER_NEEDS_ORGANIZATION`, `409 CANNOT_DEMOTE_SELF`. Users cannot be created or deleted |
+| `GET` | `/camps/{id}/registrations/export` | staff | Camp attendance list, `text/csv`, `;` separated (same columns as the old download). Includes canceled/refunded registrations |
+| `POST` | `/uploads/logo` | ADMIN | Upload a location logo: JSON `{ name, dataUri }` (base64 PNG or SVG, max 90 KB). Type is checked on the content; SVGs with scripts, event handlers or external references are refused (`400 UNSAFE_SVG`). Returns `201 { uri, name }`: send that object as `logo` to `POST`/`PATCH /locations`, which only accepts URLs from our S3 bucket. `502 UPLOAD_FAILED` / `UPLOAD_NOT_CONFIGURED` |
+| `GET` | `/places/autocomplete?q=` | any logged-in user | Google Places proxy → `[{ placeId, description }]` |
+| `GET` | `/places/{placeId}` | any logged-in user | → address object (`502 PLACES_ERROR` / `PLACES_NOT_CONFIGURED` without `GOOGLE_PLACES_API_KEY`) |
+
+## B5. Mapping from the old admin
+
+| Old admin call | Now |
+|---|---|
+| `allOrganizations`, `Organization`, `create/updateOrganization` | `GET /organizations`, `GET /organizations/{id}`, `POST`, `PATCH` |
+| `allLocations`, `Location`, `create/updateLocation` | `GET /locations`, `GET /locations/{id}`, `POST`, `PATCH` |
+| `allCamps`, `Camp`, `create/updateCamp` | `GET /camps`, `GET /camps/{id}`, `POST`, `PATCH` |
+| `GET /api/camp_registrations/:id`, camp CSV button | `GET /camps/{id}/registrations`, `…/registrations/export` |
+| `allRegistrations`, `Registration`, `updateRegistration` | `GET /registrations`, `GET /registrations/{id}`, `PATCH /registrations/{id}` |
+| `updateRegistration(adminCancel)` | `POST /registrations/{id}/cancel` as ADMIN |
+| `allUsers`, `User`, `updateUser`, `GET /api/users/export` | `GET /users`, `GET /users/{id}`, `PATCH /users/{id}`, `GET /users/export` |
+| `allStudents`, `Student`, `updateStudent` | `GET /students`, `GET /students/{id}`, `PATCH /students/{id}` |
+| `Settings`, `updateSettings` | `GET /settings`, `PATCH /settings` |
+| `currentUser` + organization switcher | `GET /me` |
+| `/api/places/*` | `/places/*` |
+| `createLocation(logo: Upload)` / `updateLocation(logo)` | `POST /uploads/logo`, then `logo: { uri, name }` on `POST`/`PATCH /locations` |
+
+## B6. Conventions that differ for staff
+
+- Errors added: `403 FORBIDDEN`, `409 PATH_TAKEN`, `HAS_CAMPS`, `HAS_REGISTRATIONS`, `DUPLICATE_REGISTRATION`,
+  `ORGANIZATION_MISMATCH`, `NOT_CANCELLABLE`, `MANAGER_NEEDS_ORGANIZATION`, `CANNOT_DEMOTE_SELF`,
+  `400 DEPOSIT_TOO_HIGH`, `INVALID_DATES`, `502 PLACES_ERROR`.
+- Every write logs an `activity` row (topic only), like the old admin.
+- Lists set `X-Total-Count` and take `page`, `perPage`, `sort`, `order`.
+
+## B7. Known gaps vs. the old admin
+
+- **Dashboard** has no dedicated endpoint; build it from the list routes and `X-Total-Count`.
+- Orders have no admin resource; search registrations by `orderId`.

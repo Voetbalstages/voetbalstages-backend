@@ -1,5 +1,6 @@
 # Local development stack: MongoDB + one-shot seed + the API image.
 #   docker compose up --build          # API on http://localhost:3000/api/v1/docs
+#   docker compose up --build --watch  # same, and code changes are synced into the container live
 #   docker compose run --rm seed bun scripts/seed.ts --reset   # wipe and re-seed the dev database
 # DEV_TOOLS=true logs magic-link URLs and replaces Mollie with a fake checkout page.
 name: voetbalstages
@@ -45,6 +46,15 @@ services:
     <<: *api
     ports:
       - "${API_PORT:-3000}:3000"
+    # `docker compose watch` / `up --watch`: edits in src, emails, scripts are copied into the running
+    # container and the API restarts; a package.json / bun.lock change rebuilds the image.
+    develop:
+      watch:
+        - { action: sync+restart, path: ./src, target: /app/src }
+        - { action: sync+restart, path: ./emails, target: /app/emails }
+        - { action: sync+restart, path: ./scripts, target: /app/scripts }
+        - { action: rebuild, path: ./package.json }
+        - { action: rebuild, path: ./bun.lock }
     depends_on:
       mongo:
         condition: service_healthy

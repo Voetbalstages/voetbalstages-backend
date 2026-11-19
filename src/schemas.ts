@@ -55,7 +55,10 @@ export const UserSchema = z
     credit: z.number(),
     address: AddressSchema.nullable(),
     isAdmin: z.boolean(),
-    isManager: z.boolean()
+    isManager: z.boolean(),
+    role: z.enum(['ADMIN', 'MANAGER']).nullable(),
+    organizationIds: z.array(z.string()),
+    createdAt: dateString.nullable()
   })
   .openapi('User')
 
@@ -68,6 +71,7 @@ export const StudentSchema = z
     foodOther: z.string(),
     currentClub: z.string(),
     remarks: z.string(),
+    createdAt: dateString.nullable(),
     owner: z.array(
       z.object({ id: z.string(), firstName: z.string(), lastName: z.string(), email: z.string() })
     )
@@ -75,7 +79,14 @@ export const StudentSchema = z
   .openapi('Student')
 
 export const OrganizationSchema = z
-  .object({ id: z.string(), name: z.string(), path: z.string(), url: z.string() })
+  .object({
+    id: z.string(),
+    name: z.string(),
+    path: z.string(),
+    url: z.string(),
+    mollieProfileId: z.string().optional().openapi({ description: 'Staff only (ADMIN, or MANAGER of this organization).' }),
+    terms: z.string().optional().openapi({ description: 'Staff only here; public via `/organizations/{path}/terms`.' })
+  })
   .openapi('Organization')
 
 const OrgRef = z.object({ id: z.string(), name: z.string() })
@@ -90,7 +101,9 @@ export const LocationSchema = z
     addressString: z.string(),
     extInfo: z.string(),
     message: z.string(),
-    organization: OrgRef.nullable()
+    organization: OrgRef.nullable(),
+    organizationId: z.string().nullable(),
+    visibility: z.enum(['VISIBLE', 'HIDDEN', 'AUTO'])
   })
   .openapi('Location')
 
@@ -114,7 +127,15 @@ export const CampSchema = z
     from: dateString.nullable(),
     to: dateString.nullable(),
     duration: z.number(),
-    status: z.enum(['OPEN', 'CLOSED', 'CANCELED', 'HIDDEN']),
+    status: z
+      .enum(['OPEN', 'CLOSED', 'CANCELED', 'HIDDEN'])
+      .openapi({ description: 'Computed: a started OPEN camp reads CLOSED. `HIDDEN` is only returned to staff.' }),
+    storedStatus: z.enum(['OPEN', 'CANCELED', 'HIDDEN']).openapi({ description: 'Status as saved; this is what staff write.' }),
+    locationId: z.string(),
+    organizationId: z.string(),
+    cost: z.number(),
+    deposit: z.number(),
+    earlyBirdToInc: dateString.nullable(),
     options: z.array(z.enum(campOptions)),
     costDetail: CostDetailSchema,
     location: z
@@ -135,7 +156,29 @@ export const RegistrationSchema = z
     tshirtSize: z.string().nullable(),
     shortSize: z.string().nullable(),
     shoeSize: z.number().nullable(),
-    student: z.object({ id: z.string(), name: z.string() }).nullable(),
+    price: z.number().nullable().openapi({ description: 'Custom amount due set by an admin; null = camp price.' }),
+    student: z
+      .object({
+        id: z.string(),
+        name: z.string(),
+        dob: z.string(),
+        food: z.array(z.string()),
+        foodOther: z.string(),
+        currentClub: z.string(),
+        remarks: z.string()
+      })
+      .nullable(),
+    user: z
+      .object({
+        id: z.string(),
+        firstName: z.string(),
+        lastName: z.string(),
+        fullName: z.string(),
+        email: z.string(),
+        secondEmail: z.string(),
+        telephone: z.array(z.string())
+      })
+      .nullable(),
     camp: z
       .object({
         id: z.string(),
@@ -173,6 +216,18 @@ export const OrderSchema = z
     registrations: z.array(RegistrationSchema)
   })
   .openapi('Order')
+
+export const SettingsSchema = z
+  .object({
+    earlyBirdToInc: dateString.nullable(),
+    earlyBirdDiscount: z.number().optional().openapi({ description: 'Staff only.' }),
+    depositDays: z.number().optional().openapi({ description: 'Staff only.' }),
+    forcePayDays: z.number().optional().openapi({ description: 'Staff only.' }),
+    cancelDays: z.number().optional().openapi({ description: 'Staff only.' }),
+    emailFrom: z.string().optional().openapi({ description: 'Staff only.' }),
+    terms: z.string().optional().openapi({ description: 'Staff only here; public via `/terms`.' })
+  })
+  .openapi('Settings')
 
 export const PaginationQuery = z.object({
   page: z.coerce.number().int().min(0).default(0),

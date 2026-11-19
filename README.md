@@ -4,6 +4,10 @@ REST API for the voetbalstages shop client. It runs side by side with the old Ex
 GraphQL backend on the **same MongoDB**. See [REFACTOR.md](REFACTOR.md) for the migration plan
 and [DEV_REST_API.md](DEV_REST_API.md) for the API contract. Live docs: `/api/v1/docs`.
 
+One API for the shop and the admin panel: the same routes, with the logged-in user's role deciding what
+a call returns and may do (Part B of `DEV_REST_API.md`). Operations that need a role say **Requires: ADMIN** or
+**staff** in their Swagger description.
+
 Stack: Bun, TypeScript, [Hono](https://hono.dev) + `@hono/zod-openapi`, Mongoose 8,
 Mollie (REST), AWS SES via `email-templates` (pug), `bun test` + a throwaway `mongod`.
 
@@ -145,4 +149,6 @@ One-time setup:
 | `MOLLIE_CLIENT_ID`, `MOLLIE_CLIENT_SECRET`, `MOLLIE_REFRESH_TOKEN` | same Mollie OAuth app |
 | `MOLLIE_TESTMODE` | `false` in production |
 | `APPLICATION_FEE` | platform fee per registration in EUR |
+| `AWS_S3_USER_KEY`, `AWS_S3_USER_SECRET` | optional; logo uploads to the `voetbalstages` bucket (`POST /api/v1/uploads/logo`), `502` without them |
+| `GOOGLE_PLACES_API_KEY` | optional; address lookup (`/api/v1/places/*`), those routes answer `502` without it |
 | `N8N_WEBHOOK_URL`, `BUGSNAG_API_KEY` | optional |

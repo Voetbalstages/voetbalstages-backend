@@ -43,6 +43,13 @@ const schema = z
   // Local development only: logs magic-link URLs and replaces Mollie with a fake checkout page.
   DEV_TOOLS: bool.default(false),
 
+  // Logo uploads (S3 bucket `voetbalstages`, eu-central-1). Without keys the upload endpoint answers 502.
+  AWS_S3_USER_KEY: z.string().default(''),
+  AWS_S3_USER_SECRET: z.string().default(''),
+
+  // Admin address lookup (Google Places / Geocoding). Without it the places endpoints answer 502.
+  GOOGLE_PLACES_API_KEY: z.string().default(''),
+
   N8N_WEBHOOK_URL: z.string().optional(),
   BUGSNAG_API_KEY: z.string().optional()
   })

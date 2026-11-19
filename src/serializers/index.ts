@@ -39,6 +39,8 @@ export interface UserLike {
   credit?: number | null
   address?: Record<string, unknown> | null
   role?: string | null
+  organizationIds?: Id[] | null
+  createdAt?: Date | null
 }
 
 const ADDRESS_FIELDS = ['formatted', 'streetAddress', 'postcode', 'district', 'city', 'province', 'lat', 'lng', 'placeId'] as const
@@ -64,7 +66,10 @@ export const serializeUser = (u: UserLike): UserJson => {
     credit: round2(u.credit ?? 0),
     address: serializeAddress(u.address),
     isAdmin: u.role === 'ADMIN',
-    isManager: u.role === 'MANAGER'
+    isManager: u.role === 'MANAGER',
+    role: u.role === 'ADMIN' || u.role === 'MANAGER' ? u.role : null,
+    organizationIds: (u.organizationIds ?? []).map(String),
+    createdAt: iso(u.createdAt)
   }
 }
 
@@ -79,6 +84,7 @@ export interface StudentLike {
   currentClub?: string | null
   remarks?: string | null
   ownerId?: Id[] | null
+  createdAt?: Date | null
 }
 
 export const serializeStudents = async (students: StudentLike[]): Promise<StudentJson[]> => {
@@ -95,6 +101,7 @@ export const serializeStudents = async (students: StudentLike[]): Promise<Studen
     foodOther: str(s.foodOther),
     currentClub: str(s.currentClub),
     remarks: str(s.remarks),
+    createdAt: iso(s.createdAt),
     owner: (s.ownerId ?? [])
       .map(id => byId.get(String(id)))
       .filter(o => !!o)
@@ -113,13 +120,17 @@ export interface OrganizationLike {
   _id: Id
   name?: string | null
   path: string
+  mollieProfileId?: string | null
+  terms?: string | null
 }
 
-export const serializeOrganization = (o: OrganizationLike): OrganizationJson => ({
+/** `staff` adds the Mollie profile id and terms. */
+export const serializeOrganization = (o: OrganizationLike, staff = false): OrganizationJson => ({
   id: String(o._id),
   name: str(o.name),
   path: o.path,
-  url: `${env.SHOP_URL}/${o.path}`
+  url: `${env.SHOP_URL}/${o.path}`,
+  ...(staff && { mollieProfileId: str(o.mollieProfileId), terms: str(o.terms) })
 })
 
 const orgRefs = async (ids: (Id | null | undefined)[]) => {
@@ -141,6 +152,7 @@ export interface LocationLike {
   message?: string | null
   logo?: { uri?: string | null; name?: string | null } | null
   organizationId?: Id | null
+  visibility?: string | null
 }
 
 export const serializeLocations = async (locations: LocationLike[]): Promise<LocationJson[]> => {
@@ -156,7 +168,9 @@ export const serializeLocations = async (locations: LocationLike[]): Promise<Loc
       addressString: `${str(a.streetAddress)}, ${str(a.postcode)} ${str(a.district || a.city)}`,
       extInfo: str(l.extInfo),
       message: str(l.message),
-      organization: l.organizationId ? (orgs.get(String(l.organizationId)) ?? null) : null
+      organization: l.organizationId ? (orgs.get(String(l.organizationId)) ?? null) : null,
+      organizationId: l.organizationId ? String(l.organizationId) : null,
+      visibility: (l.visibility ?? 'HIDDEN') as LocationJson['visibility']
     }
   })
 }
@@ -208,6 +222,12 @@ export const serializeCamps = async (camps: CampLike[], settings: Settings): Pro
           ? Math.round((new Date(c.to).getTime() - new Date(c.from).getTime()) / DAY + 1)
           : 0,
       status: campStatus(c),
+      storedStatus: (c.status ?? 'OPEN') as CampJson['storedStatus'],
+      locationId: String(c.locationId),
+      organizationId: String(c.organizationId),
+      cost: Number(c.cost ?? 0),
+      deposit: Number(c.deposit ?? 0),
+      earlyBirdToInc: iso(c.earlyBirdToInc),
       options: (c.options ?? []) as CampJson['options'],
       costDetail: {
         cost: cost.cost,
@@ -252,14 +272,16 @@ export interface RegistrationLike {
 
 /** Batch-loads everything registrations refer to, so serializing N registrations is O(1) queries. */
 export const loadRegistrationRefs = async (regs: RegistrationLike[]) => {
-  const ids = (key: 'campId' | 'studentId') => [
+  const ids = (key: 'campId' | 'studentId' | 'userId') => [
     ...new Set(regs.map(r => r[key]).filter(Boolean).map(String))
   ]
   const campIds = ids('campId')
   const studentIds = ids('studentId')
-  const [camps, students] = await Promise.all([
+  const userIds = ids('userId')
+  const [camps, students, users] = await Promise.all([
     campIds.length ? Camps.find({ _id: { $in: campIds } }).lean() : [],
-    studentIds.length ? Students.find({ _id: { $in: studentIds } }, { name: 1 }).lean() : []
+    studentIds.length ? Students.find({ _id: { $in: studentIds } }).lean() : [],
+    userIds.length ? Users.find({ _id: { $in: userIds } }).lean() : []
   ])
   const locIds = [...new Set(camps.map(c => String(c.locationId)))]
   const locations = locIds.length
@@ -268,6 +290,7 @@ export const loadRegistrationRefs = async (regs: RegistrationLike[]) => {
   return {
     camps: new Map(camps.map(c => [String(c._id), c as CampLike])),
     students: new Map(students.map(s => [String(s._id), s])),
+    users: new Map(users.map(u => [String(u._id), u])),
     locations: new Map(locations.map(l => [String(l._id), l]))
   }
 }
@@ -304,6 +327,7 @@ export const serializeRegistration = (
   const camp = r.campId ? refs.camps.get(String(r.campId)) : undefined
   const student = r.studentId ? refs.students.get(String(r.studentId)) : undefined
   const location = camp ? refs.locations.get(String(camp.locationId)) : undefined
+  const owner = r.userId ? refs.users.get(String(r.userId)) : undefined
   const paid = round2(r.paid ?? 0)
   let calculatedCost: RegistrationJson['calculatedCost']
   if (r.price) {
@@ -340,7 +364,29 @@ export const serializeRegistration = (
     tshirtSize: r.tshirtSize ?? null,
     shortSize: r.shortSize ?? null,
     shoeSize: r.shoeSize ?? null,
-    student: student ? { id: String(student._id), name: str(student.name) } : null,
+    price: r.price ? Number(r.price) : null,
+    student: student
+      ? {
+          id: String(student._id),
+          name: str(student.name),
+          dob: str(student.dob),
+          food: student.food ?? [],
+          foodOther: str(student.foodOther),
+          currentClub: str(student.currentClub),
+          remarks: str(student.remarks)
+        }
+      : null,
+    user: owner
+      ? {
+          id: String(owner._id),
+          firstName: str(owner.firstName),
+          lastName: str(owner.lastName),
+          fullName: serializeUser(owner).fullName,
+          email: str(owner.email),
+          secondEmail: str(owner.secondEmail),
+          telephone: (owner.telephone ?? []).filter((t): t is string => typeof t === 'string')
+        }
+      : null,
     camp: camp
       ? {
           id: String(camp._id),
@@ -406,3 +452,15 @@ export const serializeOrders = async (
     }
   })
 }
+
+export const serializeSettings = (s: Settings, staff = false) => ({
+  earlyBirdToInc: iso(s.earlyBirdToInc),
+  ...(staff && {
+    earlyBirdDiscount: Number(s.earlyBirdDiscount ?? 0),
+    depositDays: Number(s.depositDays ?? 14),
+    forcePayDays: Number(s.forcePayDays ?? 14),
+    cancelDays: Number(s.cancelDays ?? 14),
+    emailFrom: str(s.emailFrom),
+    terms: str(s.terms)
+  })
+})

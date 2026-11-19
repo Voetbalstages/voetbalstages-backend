@@ -51,7 +51,10 @@ Fixes over the old business logic, already built into this backend:
 4. Configure the Coolify app (env vars, see README), point `MONGO_URI` at prod, deploy.
 5. New shop client connects (building the client is out of scope here).
 
-## Step 3: Admin app on the new backend
+## Step 3: Admin app on the new backend (API built ✅, admin app not switched yet)
+
+The admin needs no routes of its own: the shared resources are role-aware (see Part B of [DEV_REST_API.md](DEV_REST_API.md)); still to do:
+login decision, rewriting the admin app against REST, retiring the old server.
 
 Add the admin/manager endpoints (camp, location, organization CRUD, users, settings, CSV
 exports, registration lists, Google Places proxy) to this backend. Then point the admin app

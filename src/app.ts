@@ -19,6 +19,9 @@ import registrationRoutes from './routes/registrations.js'
 import organizationRoutes from './routes/organizations.js'
 import publicRoutes from './routes/public.js'
 import paymentRoutes from './routes/payments.js'
+import userRoutes from './routes/users.js'
+import placesRoutes from './routes/places.js'
+import uploadRoutes from './routes/uploads.js'
 import devRoutes from './dev/routes.js'
 
 const BASE = '/api/v1'
@@ -89,15 +92,20 @@ export const createApp = () => {
   app.route(`${BASE}/orders`, orderRoutes)
   app.route(`${BASE}/registrations`, registrationRoutes)
   app.route(`${BASE}/organizations`, organizationRoutes)
+  app.route(`${BASE}/users`, userRoutes)
+  app.route(`${BASE}/places`, placesRoutes)
+  app.route(`${BASE}/uploads`, uploadRoutes)
   app.route(BASE, publicRoutes)
 
   app.doc(`${BASE}/openapi.json`, {
     openapi: '3.0.0',
     info: {
-      title: 'Voetbalstages client API',
+      title: 'Voetbalstages API',
       version: '1.0.0',
       description:
-        'REST API for the public booking flow. Auth is a host-only session cookie: send ' +
+        'REST API for the shop and the admin panel. Both use the same resources; the logged-in user ' +
+        'decides what a call returns and may do. Operations that need a role say **Requires: ADMIN** / ' +
+        '**staff** in their description; staff get extra fields and see hidden records. Auth is a host-only session cookie: send ' +
         "`credentials: 'include'` and `Content-Type: application/json` on every POST."
     },
     servers: [{ url: env.API_URL }]

@@ -12,6 +12,7 @@ export class ApiError extends Error {
 
 export const badRequest = (code: string, message?: string) => new ApiError(400, code, message)
 export const unauthorized = () => new ApiError(401, 'UNAUTHENTICATED', 'Login required')
+export const forbidden = (message = 'Not allowed') => new ApiError(403, 'FORBIDDEN', message)
 export const notFound = (what = 'Resource') => new ApiError(404, 'NOT_FOUND', `${what} not found`)
 export const conflict = (code: string, message?: string) => new ApiError(409, code, message)
 export const tooManyRequests = () => new ApiError(429, 'RATE_LIMITED', 'Too many requests')

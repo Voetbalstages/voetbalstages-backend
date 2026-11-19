@@ -1,8 +1,9 @@
 import { createRoute, z } from '@hono/zod-openapi'
-import { Users } from '../db/models/index.js'
+import { Organizations, Users } from '../db/models/index.js'
 import { router } from '../lib/router.js'
-import { AddressSchema, UserSchema, errorResponses, json } from '../schemas.js'
-import { serializeUser } from '../serializers/index.js'
+import { AddressSchema, OrganizationSchema, UserSchema, errorResponses, json } from '../schemas.js'
+import { serializeOrganization, serializeUser } from '../serializers/index.js'
+import { optionalStaff } from '../auth/staff.js'
 import { requireUser } from '../auth/session.js'
 import { logActivity } from '../services/activity.js'
 
@@ -14,9 +15,20 @@ app.openapi(
     path: '/',
     tags: ['Me'],
     summary: 'Current user profile',
-    responses: { 200: json(UserSchema), ...errorResponses(401) }
+    description:
+      'Staff additionally get `organizations`: every organization for an ADMIN, their own for a ' +
+      "MANAGER (what the admin panel's organization switcher lists).",
+    responses: { 200: json(UserSchema.extend({ organizations: z.array(OrganizationSchema).optional() })), ...errorResponses(401) }
   }),
-  c => c.json(serializeUser(requireUser(c)), 200)
+  async c => {
+    const user = requireUser(c)
+    const staff = optionalStaff(c)
+    if (!staff) return c.json(serializeUser(user), 200)
+    const orgs = await Organizations.find(staff.organizationIds ? { _id: { $in: staff.organizationIds } } : {})
+      .sort({ name: 1 })
+      .lean()
+    return c.json({ ...serializeUser(user), organizations: orgs.map(o => serializeOrganization(o, true)) }, 200)
+  }
 )
 
 app.openapi(
